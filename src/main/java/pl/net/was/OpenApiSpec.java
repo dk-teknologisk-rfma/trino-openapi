@@ -594,7 +594,7 @@ public class OpenApiSpec
     {
         return pathItem.readOperationsMap().keySet().stream()
                 .filter(method -> filterPath(path, method))
-                .collect(toImmutableMap(identity(), method -> ImmutableList.of(path)));
+                .collect(toImmutableMap(identity(), _ -> ImmutableList.of(path)));
     }
 
     private Map<HttpPath, JsonPointer> errorPointers(PathItem pathItem, String path)
@@ -709,7 +709,7 @@ public class OpenApiSpec
                     .collect(toMap(
                             Map.Entry::getKey,
                             entry -> entry.getValue().get(),
-                            (a, b) -> a,
+                            (a, _) -> a,
                             LinkedHashMap::new));
             List<RowType.Field> fields = fieldTypes.entrySet().stream()
                     .map(prop -> RowType.field(prop.getKey(), prop.getValue().type()))
@@ -721,7 +721,7 @@ public class OpenApiSpec
                     .collect(toMap(
                             Map.Entry::getKey,
                             entry -> entry.getValue().schema(),
-                            (a, b) -> a,
+                            (a, _) -> a,
                             LinkedHashMap::new));
             return Optional.of(new TypeTuple(RowType.from(fields), object.properties(newProperties)));
         }
@@ -788,11 +788,11 @@ public class OpenApiSpec
                         .setRequiresPredicate(sameColumns.stream()
                                 .map(OpenApiColumn::getRequiresPredicate)
                                 .flatMap(map -> map.entrySet().stream())
-                                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new)))
+                                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (a, _) -> a, LinkedHashMap::new)))
                         .setOptionalPredicate(sameColumns.stream()
                                 .map(OpenApiColumn::getOptionalPredicate)
                                 .flatMap(map -> map.entrySet().stream())
-                                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new)))
+                                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (a, _) -> a, LinkedHashMap::new)))
                         .build())
                 .collect(groupingBy(OpenApiColumn::getName, LinkedHashMap::new, toList()))
                 .values().stream()
