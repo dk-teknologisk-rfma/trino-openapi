@@ -53,7 +53,7 @@
         <air.build.jvmsize>4g</air.build.jvmsize>
         <air.test.jvm.additional-arguments>--add-modules=jdk.incubator.vector</air.test.jvm.additional-arguments>
 
-        <dep.trino.version>479</dep.trino.version>
+        <dep.trino.version>481</dep.trino.version>
         <dep.airlift.version>386</dep.airlift.version>
         <dep.jackson-annotations.version>2.20</dep.jackson-annotations.version>
         <dep.logback.version>1.5.22</dep.logback.version>
