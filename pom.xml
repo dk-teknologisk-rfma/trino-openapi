@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>375</version>
+        <version>395</version>
     </parent>
 
     <groupId>pl.net.was</groupId>
     <artifactId>trino-openapi</artifactId>
-    <version>1.86-481</version>
+    <version>1.86-483</version>
     <packaging>trino-plugin</packaging>
 
     <name>${project.artifactId}</name>
@@ -53,10 +53,10 @@
         <air.build.jvmsize>4g</air.build.jvmsize>
         <air.test.jvm.additional-arguments>--add-modules=jdk.incubator.vector</air.test.jvm.additional-arguments>
 
-        <dep.trino.version>481</dep.trino.version>
-        <dep.airlift.version>386</dep.airlift.version>
-        <dep.jackson-annotations.version>2.20</dep.jackson-annotations.version>
-        <dep.logback.version>1.5.22</dep.logback.version>
+        <dep.trino.version>483</dep.trino.version>
+        <dep.airlift.version>439</dep.airlift.version>
+        <dep.jackson-annotations.version>2.22.1</dep.jackson-annotations.version>
+        <dep.logback.version>1.5.38</dep.logback.version>
         <dep.swagger-parser.version>2.1.36</dep.swagger-parser.version>
         <dep.swagger-core.version>2.1.36</dep.swagger-core.version>
         <dep.swagger-models.version>2.2.41</dep.swagger-models.version>
@@ -106,7 +106,7 @@
             <dependency>
                 <groupId>org.yaml</groupId>
                 <artifactId>snakeyaml</artifactId>
-                <version>2.5</version>
+                <version>2.6</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -241,7 +241,7 @@
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>units</artifactId>
-            <version>1.12</version>
+            <version>1.13</version>
             <scope>runtime</scope>
         </dependency>
 
