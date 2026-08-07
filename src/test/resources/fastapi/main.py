@@ -55,7 +55,9 @@ class LoggingRoute(APIRoute):
 
 app = FastAPI()
 router = APIRouter(route_class=LoggingRoute)
-logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.DEBUG
+)
 
 
 class UnicornException(Exception):
@@ -93,8 +95,22 @@ class Results(BaseModel):
 
 
 items = {
-    1: Item(id="1", name="Portal Gun", price=42.0, tags=["sci-fi"], revisedAt=[date.fromisoformat("2007-10-10"), date.fromisoformat("2022-12-08")], categories=[Category(id="1", name="main")]),
-    2: Item(id="2", name="Plumbus", price=32.0, validUntil=date.fromisoformat("2999-01-01"), properties={"feeble": "schleem"}),
+    1: Item(
+        id="1",
+        name="Portal Gun",
+        price=42.0,
+        tags=["sci-fi"],
+        revisedAt=[date.fromisoformat("2007-10-10"), date.fromisoformat("2022-12-08")],
+        categories=[Category(id="1", name="main")],
+    ),
+    2: Item(
+        id="2",
+        name="Plumbus",
+        price=32.0,
+        validUntil=date.fromisoformat("2999-01-01"),
+        properties={"feeble": "schleem"},
+        createdAt=datetime.fromisoformat("2024-09-24T19:17:58.638+04:00"),
+    ),
 }
 
 
@@ -110,21 +126,24 @@ def search_items(q: ItemFilter) -> list[Item]:
 
 @router.get("/item_categories")
 def item_categories() -> Results:
-    return Results(
-        results=list(items.values()),
-        total_results=len(items))
+    return Results(results=list(items.values()), total_results=len(items))
 
 
 @router.get("/items")
-def list_item(page: int = None, per_page: int = None) -> Results:
+def list_item(
+    page: int = None, per_page: int = None, created_at_filter: datetime = None
+) -> Results:
     if page is None:
         page = 1
     if per_page is None:
         per_page = 1
     offset = (page - 1) * per_page
+    results = list(items.values())
+    if created_at_filter is not None:
+        results = [item for item in results if item.createdAt == created_at_filter]
     return Results(
-        results=list(items.values())[offset:offset+per_page],
-        total_results=len(items))
+        results=results[offset : offset + per_page], total_results=len(results)
+    )
 
 
 @router.get("/items/{item_id}")

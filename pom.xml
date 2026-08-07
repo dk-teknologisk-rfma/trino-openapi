@@ -10,7 +10,7 @@
 
     <groupId>pl.net.was</groupId>
     <artifactId>trino-openapi</artifactId>
-    <version>1.86-483</version>
+    <version>1.87-483</version>
     <packaging>trino-plugin</packaging>
 
     <name>${project.artifactId}</name>

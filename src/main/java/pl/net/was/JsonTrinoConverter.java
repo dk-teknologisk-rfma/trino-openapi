@@ -54,8 +54,11 @@ import io.trino.spi.type.VarcharType;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -64,8 +67,9 @@ import static com.google.common.base.Verify.verify;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.type.DecimalConversions.doubleToLongDecimal;
 import static io.trino.spi.type.DecimalConversions.doubleToShortDecimal;
-import static io.trino.spi.type.Timestamps.MICROSECONDS_PER_MILLISECOND;
+import static io.trino.spi.type.Timestamps.MICROSECONDS_PER_SECOND;
 import static io.trino.spi.type.Timestamps.MILLISECONDS_PER_SECOND;
+import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_MICROSECOND;
 import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_MILLISECOND;
 import static io.trino.spi.type.Timestamps.roundDiv;
 import static io.trino.spi.type.VarcharType.VARCHAR;
@@ -74,6 +78,14 @@ import static java.lang.String.format;
 
 public class JsonTrinoConverter
 {
+    // adaptive fraction-of-second (0-9 digits, no trailing zeros) instead of stacking optional [.SSS][.SSSSSS][.SSSSSSSSS]
+    // sections, which all get printed at once since NANO_OF_SECOND is always supported by ZonedDateTime
+    private static final DateTimeFormatter ISO_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+            .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+            .appendPattern("XXX")
+            .toFormatter();
+
     private JsonTrinoConverter()
     {
     }
@@ -133,7 +145,7 @@ public class JsonTrinoConverter
             }
 
             Instant instant = dateFormatter.parse(jsonNode.asText(), Instant::from);
-            long epochMicros = instant.toEpochMilli() * MICROSECONDS_PER_MILLISECOND;
+            long epochMicros = instant.getEpochSecond() * MICROSECONDS_PER_SECOND + instant.getNano() / NANOSECONDS_PER_MICROSECOND;
             return Timestamps.round(epochMicros, 6 - timestampType.getPrecision());
         }
         if (type instanceof BooleanType) {
@@ -289,6 +301,26 @@ public class JsonTrinoConverter
                 timestamp.getZone().getId());
     }
 
+    /**
+     * Formats a Trino TIMESTAMP value back into a string, using the column's Trino type (not just the OpenAPI
+     * schema) to correctly interpret the raw encoded value: Trino encodes short TIMESTAMP values (precision 0-6,
+     * which is all that this connector currently produces) as microseconds since the epoch, not milliseconds.
+     */
+    static String formatTimestamp(long value, TimestampType type, Schema<?> schemaType)
+    {
+        if (!type.isShort()) {
+            throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Unsupported timestamp precision %d", type.getPrecision()));
+        }
+        Instant instant = Instant.ofEpochSecond(
+                Math.floorDiv(value, MICROSECONDS_PER_SECOND),
+                Math.floorMod(value, MICROSECONDS_PER_SECOND) * NANOSECONDS_PER_MICROSECOND);
+        String schemaFormat = schemaType.getFormat();
+        DateTimeFormatter dateFormatter = (schemaFormat == null || schemaFormat.equals("date-time"))
+                ? ISO_DATE_TIME_FORMATTER
+                : DateTimeFormatter.ofPattern(schemaFormat);
+        return dateFormatter.format(instant.atZone(ZoneOffset.UTC));
+    }
+
     public static Object convert(Block block, int position, Type type, Schema<?> schemaType, ObjectMapper objectMapper)
     {
         if (block.isNull(position)) {
@@ -316,10 +348,8 @@ public class JsonTrinoConverter
             DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern(schemaType.getFormat());
             return dateFormatter.format(LocalDate.ofEpochDay(type.getLong(block, position)));
         }
-        if (type instanceof TimestampType) {
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern(schemaType.getFormat());
-            // TODO this is probably wrong, handle other types/precisions
-            return dateFormatter.format(Instant.ofEpochMilli(type.getLong(block, position)));
+        if (type instanceof TimestampType timestampType) {
+            return formatTimestamp(type.getLong(block, position), timestampType, schemaType);
         }
         if (type instanceof ArrayType arrayType) {
             if (block instanceof ArrayBlock arrayBlock) {
