@@ -1,0 +1,5199 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Occurrence API",
+    "description": "This API works against the GBIF Occurrence Store, which handles occurrence records and makes them available through the web service and download files.\nInternally we use a [Java web service client](https://github.com/gbif/occurrence/tree/master/occurrence-ws-client) for the consumption of these HTTP-based, RESTful web services.\n",
+    "termsOfService": "https://www.gbif.org/terms",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://api.gbif.org/v1/",
+      "description": "Production"
+    },
+    {
+      "url": "https://api.gbif-uat.org/v1/",
+      "description": "User testing"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Occurrences",
+      "description": "This API provides services related to the retrieval of single occurrence records.",
+      "x-Order": {
+        "Order": "0100"
+      }
+    },
+    {
+      "name": "Searching occurrences",
+      "description": "This API provides services for searching occurrence records that have been indexed by GBIF.\n\nIn order to retrieve all results for a given search filter you need to issue individual requests for each page, which is limited to a maximum size of 300 records per page. Note that for technical reasons we also have a hard limit for any query of 100,000 records. You will get an error if the offset + limit exceeds 100,000. To retrieve all records beyond 100,000 you should use our asynchronous download service (below) instead.",
+      "x-Order": {
+        "Order": "0200"
+      }
+    },
+    {
+      "name": "Occurrence downloads",
+      "description": "**For a guide to making downloads through the API, see the [guide to API downloads](/en/data-use/api-downloads).** *The documentation here is automatically generated from the Java code.  It is always up-to-date, but the structure for the main download request method is complex.*\n\nThis API provides services to request bulk downloads of occurrence records and retrieve information about those downloads.\n\nOccurrence downloads are created asynchronously \u2014 the user requests a download and, once complete, is sent an email with a link to the resulting file.\n\nIt is necessary to register as a user at [GBIF.org](https://www.gbif.org/) to create a download request, and use HTTP authentication using the username (not the email) and password.\n\n### Occurrence Download Predicates<a id=\"predicates\"></a>\n\nFor the API reference for download predicates expand the \u201cSchema\u201d \u2192 `predicate` section of the request body schema on the [creation API call](#Occurrence%20downloads/requestDownload) (the first one after this text).\n\n### Occurrence Download Limits<a id=\"limits\"></a>\n\nOccurrence downloads demand significant computational resources, and are monitored and limited according to the GBIF platform load. In order to avoid that downloads requested by a single user utilize most of the resources two rules have been set:\n\n1. Download complexity limits:\n   * A download predicate may contain a maximum of 101,000 items (taxon keys, kingdom keys, phylum keys,      catalogue numbers, occurrence ids and so on).\n   * A download predicate may contain a maximum of 10,000 points in any \u201cwithin\u201d predicate geometries.\n2. Limits on incomplete (preparing, running) downloads:\n   * If the total number of incomplete downloads is fewer than 100, any single user can have no more than 3      incomplete downloads.\n   * If the total number of downloads is fewer than 1000 any single user may only have 1 download.\n\nThe number of user downloads currently in progress can be seen on the [System Health page](https://www.gbif.org/system-health). Your own downloads can be seen on your [My Downloads](https://www.gbif.org/user/download) page.",
+      "x-Order": {
+        "Order": "0300"
+      }
+    },
+    {
+      "name": "Occurrence download formats",
+      "description": "This API lists the fields present in the various download formats, their data types and their term identifiers.",
+      "x-Order": {
+        "Order": "0400"
+      }
+    },
+    {
+      "name": "Occurrence download statistics",
+      "description": "This API provides statistics about occurrence downloads.",
+      "x-Order": {
+        "Order": "0500"
+      }
+    },
+    {
+      "name": "Occurrence metrics",
+      "description": "This API provides services to retrieve various counts and metrics provided for occurrence records. The metrics that are currently supported are listed by the API itself, see [the schema method](#operation/getOccurrenceCountSchema) for details.",
+      "x-Order": {
+        "Order": "0600"
+      }
+    },
+    {
+      "name": "Occurrence inventories",
+      "description": "This API provides services that list all distinct values together with their occurrence count for a given occurrence property. Only a few properties are supported, each with its own service to call.",
+      "x-Order": {
+        "Order": "0700"
+      }
+    },
+    {
+      "name": "GADM regions",
+      "description": "The [GADM Global Administrative Area Database](https://gadm.org) is a high-resolution database of administrative areas of countries.\n\nWithin GBIF, it is used to index occurrence data by administrative region.\n\nThis API provides services to search and browse regions and sub-regions down to the third level sub-region.",
+      "x-Order": {
+        "Order": "0800"
+      }
+    }
+  ],
+  "paths": {
+    "/occurrence/search": {
+      "get": {
+        "tags": [
+          "Searching occurrences"
+        ],
+        "summary": "Occurrence search",
+        "description": "Full search across all occurrences.",
+        "operationId": "searchOccurrence",
+        "parameters": [
+          {
+            "name": "acceptedTaxonKey",
+            "in": "query",
+            "description": "A taxon key from the GBIF backbone or the specified checklist (see checklistKey parameter). Only synonym taxa are included in the search, so a search for Aves with acceptedTaxonKey=212 (i.e. [/occurrence/search?taxonKey=212](https://api.gbif.org/v1/occurrence/search?acceptedTaxonKey=212)) will match occurrences identified as birds, but not any known family, genus or species of bird.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 2476674
+          },
+          {
+            "name": "associatedSequences",
+            "in": "query",
+            "description": "Identifier (publication, global unique identifier, URI) of genetic sequence information associated with the material entity.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "http://www.ncbi.nlm.nih.gov/nuccore/U34853.1"
+          },
+          {
+            "name": "basisOfRecord",
+            "in": "query",
+            "description": "Basis of record, as defined in our BasisOfRecord vocabulary.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "The values of the Darwin Core term Basis of Record which can apply to occurrences.\n\nSee GBIF's [Darwin Core Type Vocabulary](https://rs.gbif.org/vocabulary/dwc/basis_of_record.xml) for definitions.",
+                "enum": [
+                  "PRESERVED_SPECIMEN",
+                  "FOSSIL_SPECIMEN",
+                  "LIVING_SPECIMEN",
+                  "OBSERVATION",
+                  "HUMAN_OBSERVATION",
+                  "MACHINE_OBSERVATION",
+                  "MATERIAL_SAMPLE",
+                  "LITERATURE",
+                  "MATERIAL_CITATION",
+                  "OCCURRENCE",
+                  "UNKNOWN"
+                ],
+                "externalDocs": {
+                  "description": "API call to retrieve all official values.",
+                  "url": "https://api.gbif.org/v1/enumeration/basic/BasisOfRecord"
+                },
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "PRESERVED_SPECIMEN"
+          },
+          {
+            "name": "bed",
+            "in": "query",
+            "description": "The full name of the lithostratigraphic bed from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Harlem coal"
+          },
+          {
+            "name": "catalogNumber",
+            "in": "query",
+            "description": "An identifier of any form assigned by the source within a physical collection or digital dataset for the record which may not be unique, but should be fairly unique in combination with the institution and collection code.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "K001275042"
+          },
+          {
+            "name": "classKey",
+            "in": "query",
+            "description": "Class classification key.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 212
+          },
+          {
+            "name": "checklistKey",
+            "in": "query",
+            "description": "*Experimental.* The checklist key. This determines which taxonomy will be used for the search in conjunction with other taxon keys or scientificName. If this is not specified, the GBIF backbone taxonomy will be used.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2d59e5db-57ad-41ff-97d6-11f5fb264527"
+          },
+          {
+            "name": "collectionCode",
+            "in": "query",
+            "description": "An identifier of any form assigned by the source to identify the physical collection or digital dataset uniquely within the context of an institution.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "F"
+          },
+          {
+            "name": "collectionKey",
+            "in": "query",
+            "description": "A key (UUID) for a collection registered in the [Global Registry of Scientific Collections](https://www.gbif.org/grscicoll).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "dceb8d52-094c-4c2c-8960-75e0097c6861"
+          },
+          {
+            "name": "continent",
+            "in": "query",
+            "description": "Continent, as defined in our Continent vocabulary.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "The continent, based on a 7 continent model described on [Wikipedia](https://en.wikipedia.org/wiki/Continent#Number_of_continents) and the [World Geographical Scheme for Recording Plant Distributions (WGSRPD)](https://www.tdwg.org/standards/109).\n\nIn particular this splits the Americas into North and South America with North America including the Caribbean (except Trinidad and Tobago) and reaching down and including Panama.\n\nSee the [GBIF Continents](https://github.com/gbif/continents/) for the exact divisions.\n\n*This is a geographical division.  See `GBIFRegion` for GBIF's political divisions.*",
+                "enum": [
+                  "AFRICA",
+                  "ANTARCTICA",
+                  "ASIA",
+                  "OCEANIA",
+                  "EUROPE",
+                  "NORTH_AMERICA",
+                  "SOUTH_AMERICA"
+                ],
+                "externalDocs": {
+                  "description": "API call to retrieve all official values.",
+                  "url": "https://api.gbif.org/v1/enumeration/basic/Continent"
+                },
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "EUROPE"
+          },
+          {
+            "name": "coordinateUncertaintyInMeters",
+            "in": "query",
+            "description": "The horizontal distance (in metres) from the given decimalLatitude and decimalLongitude describing the smallest circle containing the whole of the Location.\n\n*Supports range queries.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "0,500"
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "The 2-letter country code (as per ISO-3166-1) of the country in which the occurrence was recorded.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "AF",
+                  "AX",
+                  "AL",
+                  "DZ",
+                  "AS",
+                  "AD",
+                  "AO",
+                  "AI",
+                  "AQ",
+                  "AG",
+                  "AR",
+                  "AM",
+                  "AW",
+                  "AU",
+                  "AT",
+                  "AZ",
+                  "BS",
+                  "BH",
+                  "BD",
+                  "BB",
+                  "BY",
+                  "BE",
+                  "BZ",
+                  "BJ",
+                  "BM",
+                  "BT",
+                  "BO",
+                  "BQ",
+                  "BA",
+                  "BW",
+                  "BV",
+                  "BR",
+                  "IO",
+                  "BN",
+                  "BG",
+                  "BF",
+                  "BI",
+                  "KH",
+                  "CM",
+                  "CA",
+                  "CV",
+                  "KY",
+                  "CF",
+                  "TD",
+                  "CL",
+                  "CN",
+                  "CX",
+                  "CC",
+                  "CO",
+                  "KM",
+                  "CD",
+                  "CG",
+                  "CK",
+                  "CR",
+                  "CI",
+                  "HR",
+                  "CU",
+                  "CW",
+                  "CY",
+                  "CZ",
+                  "DK",
+                  "DJ",
+                  "DM",
+                  "DO",
+                  "EC",
+                  "EG",
+                  "SV",
+                  "GQ",
+                  "ER",
+                  "EE",
+                  "ET",
+                  "FK",
+                  "FO",
+                  "FJ",
+                  "FI",
+                  "FR",
+                  "GF",
+                  "PF",
+                  "TF",
+                  "GA",
+                  "GM",
+                  "GE",
+                  "DE",
+                  "GH",
+                  "GI",
+                  "GR",
+                  "GL",
+                  "GD",
+                  "GP",
+                  "GU",
+                  "GT",
+                  "GG",
+                  "GN",
+                  "GW",
+                  "GY",
+                  "HT",
+                  "HM",
+                  "VA",
+                  "HN",
+                  "HK",
+                  "HU",
+                  "IS",
+                  "IN",
+                  "ID",
+                  "IR",
+                  "IQ",
+                  "IE",
+                  "IM",
+                  "IL",
+                  "IT",
+                  "JM",
+                  "JP",
+                  "JE",
+                  "JO",
+                  "KZ",
+                  "KE",
+                  "KI",
+                  "KP",
+                  "KR",
+                  "KW",
+                  "KG",
+                  "LA",
+                  "LV",
+                  "LB",
+                  "LS",
+                  "LR",
+                  "LY",
+                  "LI",
+                  "LT",
+                  "LU",
+                  "MO",
+                  "MK",
+                  "MG",
+                  "MW",
+                  "MY",
+                  "MV",
+                  "ML",
+                  "MT",
+                  "MH",
+                  "MQ",
+                  "MR",
+                  "MU",
+                  "YT",
+                  "MX",
+                  "FM",
+                  "MD",
+                  "MC",
+                  "MN",
+                  "ME",
+                  "MS",
+                  "MA",
+                  "MZ",
+                  "MM",
+                  "NA",
+                  "NR",
+                  "NP",
+                  "NL",
+                  "NC",
+                  "NZ",
+                  "NI",
+                  "NE",
+                  "NG",
+                  "NU",
+                  "NF",
+                  "MP",
+                  "NO",
+                  "OM",
+                  "PK",
+                  "PW",
+                  "PS",
+                  "PA",
+                  "PG",
+                  "PY",
+                  "PE",
+                  "PH",
+                  "PN",
+                  "PL",
+                  "PT",
+                  "PR",
+                  "QA",
+                  "RE",
+                  "RO",
+                  "RU",
+                  "RW",
+                  "BL",
+                  "SH",
+                  "KN",
+                  "LC",
+                  "MF",
+                  "PM",
+                  "VC",
+                  "WS",
+                  "SM",
+                  "ST",
+                  "SA",
+                  "SN",
+                  "RS",
+                  "SC",
+                  "SL",
+                  "SG",
+                  "SX",
+                  "SK",
+                  "SI",
+                  "SB",
+                  "SO",
+                  "ZA",
+                  "GS",
+                  "SS",
+                  "ES",
+                  "LK",
+                  "SD",
+                  "SR",
+                  "SJ",
+                  "SZ",
+                  "SE",
+                  "CH",
+                  "SY",
+                  "TW",
+                  "TJ",
+                  "TZ",
+                  "TH",
+                  "TL",
+                  "TG",
+                  "TK",
+                  "TO",
+                  "TT",
+                  "TN",
+                  "TR",
+                  "TM",
+                  "TC",
+                  "TV",
+                  "UG",
+                  "UA",
+                  "AE",
+                  "GB",
+                  "US",
+                  "UM",
+                  "UY",
+                  "UZ",
+                  "VU",
+                  "VE",
+                  "VN",
+                  "VG",
+                  "VI",
+                  "WF",
+                  "EH",
+                  "YE",
+                  "ZM",
+                  "ZW",
+                  "AA",
+                  "XK",
+                  "XZ",
+                  "ZZ"
+                ],
+                "externalDocs": {
+                  "description": "API call to retrieve all official values.",
+                  "url": "https://api.gbif.org/v1/enumeration/country"
+                },
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AF"
+          },
+          {
+            "name": "crawlId",
+            "in": "query",
+            "description": "Crawl attempt that harvested this record.\n\n*Parameter may be repeated.*",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 1
+          },
+          {
+            "name": "datasetId",
+            "in": "query",
+            "description": "The ID of the dataset.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "https://doi.org/10.1594/PANGAEA.315492"
+          },
+          {
+            "name": "datasetKey",
+            "in": "query",
+            "description": "The occurrence dataset key (a UUID).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "13b70480-bd69-11dd-b15f-b8a03c50a862"
+          },
+          {
+            "name": "datasetName",
+            "in": "query",
+            "description": "The exact name of the dataset.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "description": "The day of the month, a number between 1 and 31.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 15
+          },
+          {
+            "name": "decimalLatitude",
+            "in": "query",
+            "description": "Latitude in decimal degrees between -90\u00b0 and 90\u00b0 based on WGS 84.\n\n*Supports range queries.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "40.5,45"
+          },
+          {
+            "name": "degreeOfEstablishment",
+            "in": "query",
+            "description": "The degree to which an organism survives, reproduces and expands its range at the given place and time, as defined in the [GBIF DegreeOfEstablishment vocabulary](https://registry.gbif.org/vocabulary/DegreeOfEstablishment/concepts).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Invasive"
+          },
+          {
+            "name": "decimalLongitude",
+            "in": "query",
+            "description": "Longitude in decimals between -180 and 180 based on WGS 84.\n\n*Supports range queries.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "-120,-95.5"
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "Depth in metres relative to altitude. For example 10 metres below a lake surface with given altitude.\n\n*Parameter may be repeated or a range.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "10,20"
+          },
+          {
+            "name": "distanceFromCentroidInMeters",
+            "in": "query",
+            "description": "The horizontal distance (in metres) of the occurrence from the nearest centroid known to be used in automated georeferencing procedures, if that distance is 5000m or less.  Occurrences (especially specimens) near a country centroid may have a poor-quality georeference, especially if coordinateUncertaintyInMeters is blank or large.\n\n*Supports range queries.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "0,500"
+          },
+          {
+            "name": "dwcaExtension",
+            "in": "query",
+            "description": "A known Darwin Core Archive extension RowType.  Limits the search to occurrences which have this extension, although they will not necessarily have any useful data recorded using the extension.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "http://rs.tdwg.org/ac/terms/Multimedia"
+          },
+          {
+            "name": "earliestEonOrLowestEonothem",
+            "in": "query",
+            "description": "The full name of the earliest possible geochronologic era or lowest chronostratigraphic erathem attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Mesozoic"
+          },
+          {
+            "name": "earliestEraOrLowestErathem",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic eon or highest chrono-stratigraphic eonothem or the informal name (\"Precambrian\") attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Proterozoic"
+          },
+          {
+            "name": "earliestPeriodOrLowestSystem",
+            "in": "query",
+            "description": "The full name of the earliest possible geochronologic period or lowest chronostratigraphic system attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Neogene"
+          },
+          {
+            "name": "earliestEpochOrLowestSeries",
+            "in": "query",
+            "description": "The full name of the earliest possible geochronologic epoch or lowest chronostratigraphic series attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Holocene"
+          },
+          {
+            "name": "earliestAgeOrLowestStage",
+            "in": "query",
+            "description": "The full name of the earliest possible geochronologic age or lowest chronostratigraphic stage attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Skullrockian"
+          },
+          {
+            "name": "elevation",
+            "in": "query",
+            "description": "Elevation (altitude) in metres above sea level.\n\n*Parameter may be repeated or a range.*",
+            "schema": {
+              "$ref": "#/components/schemas/Range"
+            },
+            "example": "1000,1250"
+          },
+          {
+            "name": "endDayOfYear",
+            "in": "query",
+            "description": "The latest integer day of the year on which the event occurred.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 6
+          },
+          {
+            "name": "establishmentMeans",
+            "in": "query",
+            "description": "Whether an organism or organisms have been introduced to a given place and time through the direct or indirect activity of modern humans, as defined in the [GBIF EstablishmentMeans vocabulary](https://registry.gbif.org/vocabulary/EstablishmentMeans/concepts).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Native"
+          },
+          {
+            "name": "eventDate",
+            "in": "query",
+            "description": "Occurrence date in ISO 8601 format: yyyy, yyyy-MM or yyyy-MM-dd.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "date-time",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "2000,2001-06-30"
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "description": "An identifier for the information associated with a sampling event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "A 123"
+          },
+          {
+            "name": "familyKey",
+            "in": "query",
+            "description": "Family classification key.",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 2405
+          },
+          {
+            "name": "fieldNumber",
+            "in": "query",
+            "description": "An identifier given to the event in the field. Often serves as a link between field notes and the event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "RV Sol 87-03-08"
+          },
+          {
+            "name": "formation",
+            "in": "query",
+            "description": "The full name of the lithostratigraphic formation from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Notch Peak Formation"
+          },
+          {
+            "name": "gadmGid",
+            "in": "query",
+            "description": "A GADM geographic identifier at any level, for example AGO, AGO.1_1, AGO.1.1_1 or AGO.1.1.1_1\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AGO.1_1"
+          },
+          {
+            "name": "gadmLevel0Gid",
+            "in": "query",
+            "description": "A GADM geographic identifier at the zero level, for example AGO.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AGO"
+          },
+          {
+            "name": "gadmLevel1Gid",
+            "in": "query",
+            "description": "A GADM geographic identifier at the first level, for example AGO.1_1.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AGO.1_1"
+          },
+          {
+            "name": "gadmLevel2Gid",
+            "in": "query",
+            "description": "A GADM geographic identifier at the second level, for example AFG.1.1_1.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AFG.1.1_1"
+          },
+          {
+            "name": "gadmLevel3Gid",
+            "in": "query",
+            "description": "A GADM geographic identifier at the third level, for example AFG.1.1.1_1.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AFG.1.1.1_1"
+          },
+          {
+            "name": "gbifId",
+            "in": "query",
+            "description": "The unique GBIF key for a single occurrence.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 2005380410
+          },
+          {
+            "name": "gbifRegion",
+            "in": "query",
+            "description": "Gbif region based on country code.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "An enumeration for all GBIF Regions. These are based on [IPBES regions](https://www.nature.com/articles/sdata20167/figures/1).\n\n*This is a political division,* part of GBIF's governance structure.",
+                "enum": [
+                  "AFRICA",
+                  "ASIA",
+                  "EUROPE",
+                  "NORTH_AMERICA",
+                  "OCEANIA",
+                  "LATIN_AMERICA",
+                  "ANTARCTICA"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AFRICA"
+          },
+          {
+            "name": "genusKey",
+            "in": "query",
+            "description": "Genus classification key.",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 2877951
+          },
+          {
+            "name": "geoDistance",
+            "in": "query",
+            "description": "Filters to match occurrence records with coordinate values within a specified distance of a coordinate.\n\nDistance may be specified in kilometres (km) or metres (m).",
+            "schema": {
+              "type": "string"
+            },
+            "example": "90,100,5km"
+          },
+          {
+            "name": "georeferencedBy",
+            "in": "query",
+            "description": "Name of a person, group, or organization who determined the georeference (spatial representation) for the location.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Brad Millen"
+          },
+          {
+            "name": "geometry",
+            "in": "query",
+            "description": "Searches for occurrences inside a polygon described in Well Known Text (WKT) format. Only `POLYGON` and `MULTIPOLYGON` are accepted WKT types.\n\nFor example, a shape written as `POLYGON ((30.1 10.1, 40 40, 20 40, 10 20, 30.1 10.1))` would be queried as is.\n\n_Polygons must have *anticlockwise* ordering of points._ (A clockwise polygon represents the opposite area: the Earth's surface with a 'hole' in it. Such queries are not supported.)\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "POLYGON ((30.1 10.1, 40 40, 20 40, 10 20, 30.1 10.1))"
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "description": "The full name of the lithostratigraphic group from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Bathurst"
+          },
+          {
+            "name": "hasCoordinate",
+            "in": "query",
+            "description": "Limits searches to occurrence records which contain a value in both latitude and longitude (i.e. `hasCoordinate=true` limits to occurrence records with coordinate values and `hasCoordinate=false` limits to occurrence records without coordinate values).",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "higherGeography",
+            "in": "query",
+            "description": "Geographic name less specific than the information captured in the locality term.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Argentina"
+          },
+          {
+            "name": "highestBiostratigraphicZone",
+            "in": "query",
+            "description": "The full name of the highest possible geological biostratigraphic zone of the stratigraphic horizon from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Blancan"
+          },
+          {
+            "name": "hasGeospatialIssue",
+            "in": "query",
+            "description": "Includes/excludes occurrence records which contain spatial issues (as determined in our record interpretation), i.e. hasGeospatialIssue=true returns only those records with spatial issues while hasGeospatialIssue=false includes only records without spatial issues.\n\nThe absence of this parameter returns any record with or without spatial issues.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "hostingOrganizationKey",
+            "in": "query",
+            "description": "The key (UUID) of the publishing organization whose installation (server) hosts the original dataset.\n\n(This is of little interest to most data users.)\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "fbca90e3-8aed-48b1-84e3-369afbd000ce"
+          },
+          {
+            "name": "identifiedBy",
+            "in": "query",
+            "description": "The person who provided the taxonomic identification of the occurrence.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Allison"
+          },
+          {
+            "name": "identifiedByID",
+            "in": "query",
+            "description": "Identifier (e.g. ORCID) for the person who provided the taxonomic identification of the occurrence.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "https://orcid.org/0000-0001-6492-4016"
+          },
+          {
+            "name": "installationKey",
+            "in": "query",
+            "description": "The occurrence installation key (a UUID).\n\n(This is of little interest to most data users.  It is the identifier for the server that provided the data to GBIF.)\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "17a83780-3060-4851-9d6f-029d5fcb81c9"
+          },
+          {
+            "name": "institutionCode",
+            "in": "query",
+            "description": "An identifier of any form assigned by the source to identify the institution the record belongs to. Not guaranteed to be unique.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "K"
+          },
+          {
+            "name": "institutionKey",
+            "in": "query",
+            "description": "A key (UUID) for an institution registered in the [Global Registry of Scientific Collections](https://www.gbif.org/grscicoll).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "fa252605-26f6-426c-9892-94d071c2c77f"
+          },
+          {
+            "name": "issue",
+            "in": "query",
+            "description": "A specific interpretation issue as defined in our OccurrenceIssue enumeration.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ZERO_COORDINATE",
+                  "COORDINATE_OUT_OF_RANGE",
+                  "COORDINATE_INVALID",
+                  "COORDINATE_ROUNDED",
+                  "GEODETIC_DATUM_INVALID",
+                  "GEODETIC_DATUM_ASSUMED_WGS84",
+                  "COORDINATE_REPROJECTED",
+                  "COORDINATE_REPROJECTION_FAILED",
+                  "COORDINATE_REPROJECTION_SUSPICIOUS",
+                  "COORDINATE_ACCURACY_INVALID",
+                  "COORDINATE_PRECISION_INVALID",
+                  "COORDINATE_UNCERTAINTY_METERS_INVALID",
+                  "COORDINATE_PRECISION_UNCERTAINTY_MISMATCH",
+                  "FOOTPRINT_SRS_INVALID",
+                  "FOOTPRINT_WKT_MISMATCH",
+                  "FOOTPRINT_WKT_INVALID",
+                  "COUNTRY_COORDINATE_MISMATCH",
+                  "COUNTRY_MISMATCH",
+                  "COUNTRY_INVALID",
+                  "COUNTRY_DERIVED_FROM_COORDINATES",
+                  "CONTINENT_COORDINATE_MISMATCH",
+                  "CONTINENT_COUNTRY_MISMATCH",
+                  "CONTINENT_INVALID",
+                  "CONTINENT_DERIVED_FROM_COUNTRY",
+                  "CONTINENT_DERIVED_FROM_COORDINATES",
+                  "PRESUMED_SWAPPED_COORDINATE",
+                  "PRESUMED_NEGATED_LONGITUDE",
+                  "PRESUMED_NEGATED_LATITUDE",
+                  "RECORDED_DATE_MISMATCH",
+                  "RECORDED_DATE_INVALID",
+                  "RECORDED_DATE_UNLIKELY",
+                  "TAXON_MATCH_FUZZY",
+                  "TAXON_MATCH_HIGHERRANK",
+                  "TAXON_MATCH_AGGREGATE",
+                  "TAXON_MATCH_SCIENTIFIC_NAME_ID_IGNORED",
+                  "TAXON_MATCH_TAXON_CONCEPT_ID_IGNORED",
+                  "TAXON_MATCH_TAXON_ID_IGNORED",
+                  "SCIENTIFIC_NAME_ID_NOT_FOUND",
+                  "TAXON_CONCEPT_ID_NOT_FOUND",
+                  "TAXON_ID_NOT_FOUND",
+                  "SCIENTIFIC_NAME_AND_ID_INCONSISTENT",
+                  "TAXON_MATCH_NONE",
+                  "TAXON_MATCH_NAME_AND_ID_AMBIGUOUS",
+                  "DEPTH_NOT_METRIC",
+                  "DEPTH_UNLIKELY",
+                  "DEPTH_MIN_MAX_SWAPPED",
+                  "DEPTH_NON_NUMERIC",
+                  "ELEVATION_UNLIKELY",
+                  "ELEVATION_MIN_MAX_SWAPPED",
+                  "ELEVATION_NOT_METRIC",
+                  "ELEVATION_NON_NUMERIC",
+                  "MODIFIED_DATE_INVALID",
+                  "MODIFIED_DATE_UNLIKELY",
+                  "IDENTIFIED_DATE_UNLIKELY",
+                  "IDENTIFIED_DATE_INVALID",
+                  "BASIS_OF_RECORD_INVALID",
+                  "TYPE_STATUS_INVALID",
+                  "SUSPECTED_TYPE",
+                  "MULTIMEDIA_DATE_INVALID",
+                  "MULTIMEDIA_URI_INVALID",
+                  "REFERENCES_URI_INVALID",
+                  "INTERPRETATION_ERROR",
+                  "INDIVIDUAL_COUNT_INVALID",
+                  "INDIVIDUAL_COUNT_CONFLICTS_WITH_OCCURRENCE_STATUS",
+                  "OCCURRENCE_STATUS_UNPARSABLE",
+                  "OCCURRENCE_STATUS_INFERRED_FROM_INDIVIDUAL_COUNT",
+                  "OCCURRENCE_STATUS_INFERRED_FROM_BASIS_OF_RECORD",
+                  "GEOREFERENCED_DATE_UNLIKELY",
+                  "GEOREFERENCED_DATE_INVALID",
+                  "AMBIGUOUS_INSTITUTION",
+                  "AMBIGUOUS_COLLECTION",
+                  "INSTITUTION_MATCH_NONE",
+                  "COLLECTION_MATCH_NONE",
+                  "INSTITUTION_MATCH_FUZZY",
+                  "COLLECTION_MATCH_FUZZY",
+                  "INSTITUTION_COLLECTION_MISMATCH",
+                  "POSSIBLY_ON_LOAN",
+                  "DIFFERENT_OWNER_INSTITUTION",
+                  "ERA_OR_ERATHEM_INFERRED_FROM_PARENT_RANK",
+                  "PERIOD_OR_SYSTEM_INFERRED_FROM_PARENT_RANK",
+                  "EPOCH_OR_SERIES_INFERRED_FROM_PARENT_RANK",
+                  "AGE_OR_STAGE_INFERRED_FROM_PARENT_RANK",
+                  "EON_OR_EONOTHEM_RANK_MISMATCH",
+                  "ERA_OR_ERATHEM_RANK_MISMATCH",
+                  "PERIOD_OR_SYSTEM_RANK_MISMATCH",
+                  "EPOCH_OR_SERIES_RANK_MISMATCH",
+                  "AGE_OR_STAGE_RANK_MISMATCH",
+                  "EON_OR_EONOTHEM_INVALID_RANGE",
+                  "ERA_OR_ERATHEM_INVALID_RANGE",
+                  "PERIOD_OR_SYSTEM_INVALID_RANGE",
+                  "EPOCH_OR_SERIES_INVALID_RANGE",
+                  "AGE_OR_STAGE_INVALID_RANGE",
+                  "EON_OR_EONOTHEM_AND_ERA_OR_ERATHEM_MISMATCH",
+                  "ERA_OR_ERATHEM_AND_PERIOD_OR_SYSTEM_MISMATCH",
+                  "PERIOD_OR_SYSTEM_AND_EPOCH_OR_SERIES_MISMATCH",
+                  "EPOCH_OR_SERIES_AND_AGE_OR_STAGE_MISMATCH",
+                  "NUCLEOTIDE_SEQUENCE_NATURAL_LANGUAGE",
+                  "NUCLEOTIDE_SEQUENCE_ENDS_TRIMMED",
+                  "NUCLEOTIDE_SEQUENCE_GAPS_REMOVED",
+                  "NUCLEOTIDE_SEQUENCE_INVALID",
+                  "NUCLEOTIDE_SEQUENCE_HIGH_N_FRACTION",
+                  "NUCLEOTIDE_SEQUENCE_HIGH_AMBIGUITY",
+                  "TARGET_GENE_INVALID",
+                  "DUPLICATE_NUCLEOTIDE_SEQUENCES_COLLAPSED",
+                  "PARENT_EVENT_INFINITE_LINEAGE"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "COUNTRY_COORDINATE_MISMATCH"
+          },
+          {
+            "name": "isInCluster",
+            "in": "query",
+            "description": "*Experimental.* Searches for records which are part of a cluster.  See the documentation on [clustering](/en/data-processing/clustering-occurrences).",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "island",
+            "in": "query",
+            "description": "The name of the island on or near which the location occurs.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Zanzibar"
+          },
+          {
+            "name": "islandGroup",
+            "in": "query",
+            "description": "The name of the island group in which the location occurs.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Seychelles"
+          },
+          {
+            "name": "isSequenced",
+            "in": "query",
+            "description": "Flag occurrence when associated sequences exists",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "iucnRedListCategory",
+            "in": "query",
+            "description": "A threat status category from the IUCN Red List.  The two-letter code for the status should be used.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "EXTINCT",
+                  "EXTINCT_IN_THE_WILD",
+                  "REGIONALLY_EXTINCT",
+                  "CRITICALLY_ENDANGERED",
+                  "ENDANGERED",
+                  "VULNERABLE",
+                  "NEAR_THREATENED",
+                  "LEAST_CONCERN",
+                  "DATA_DEFICIENT",
+                  "NOT_APPLICABLE",
+                  "NOT_EVALUATED"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "EX"
+          },
+          {
+            "name": "kingdomKey",
+            "in": "query",
+            "description": "Kingdom classification key.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 5
+          },
+          {
+            "name": "lastInterpreted",
+            "in": "query",
+            "description": "This date the record was last modified in GBIF, in ISO 8601 format: yyyy, yyyy-MM, yyyy-MM-dd, or MM-dd.\n\nNote that this is the date the record was last changed in GBIF, not necessarily the date the record was first/last changed by the publisher. Data is re-interpreted when we change the taxonomic backbone, geographic data sources, or interpretation processes.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "date-time",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "2023-02"
+          },
+          {
+            "name": "latestEonOrHighestEonothem",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic eon or highest chrono-stratigraphic eonothem or the informal name (\"Precambrian\") attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Proterozoic"
+          },
+          {
+            "name": "latestEraOrHighestErathem",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic era or highest chronostratigraphic erathem attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Cenozoic"
+          },
+          {
+            "name": "latestPeriodOrHighestSystem",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic period or highest chronostratigraphic system attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Neogene"
+          },
+          {
+            "name": "latestEpochOrHighestSeries",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic epoch or highest chronostratigraphic series attributable to the stratigraphic horizon from which the material entity was collected*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Pleistocene"
+          },
+          {
+            "name": "latestAgeOrHighestStage",
+            "in": "query",
+            "description": "The full name of the latest possible geochronologic age or highest chronostratigraphic stage attributable to the stratigraphic horizon from which the material entity was collected.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Boreal"
+          },
+          {
+            "name": "license",
+            "in": "query",
+            "description": "The licence applied to the dataset or record by the publisher.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "CC0_1_0",
+                  "CC_BY_4_0",
+                  "CC_BY_NC_4_0",
+                  "UNSPECIFIED",
+                  "UNSUPPORTED"
+                ],
+                "externalDocs": {
+                  "description": "API call to retrieve all official values.",
+                  "url": "https://api.gbif.org/v1/enumeration/basic/License"
+                },
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "CC0_1_0"
+          },
+          {
+            "name": "lifeStage",
+            "in": "query",
+            "description": "The age class or life stage of an organism at the time the occurrence was recorded, as defined in the GBIF LifeStage vocabulary](https://registry.gbif.org/vocabulary/LifeStage/concepts).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Juvenile"
+          },
+          {
+            "name": "locality",
+            "in": "query",
+            "description": "The specific description of the place.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "lowestBiostratigraphicZone",
+            "in": "query",
+            "description": "The full name of the lowest possible geological biostratigraphic zone of the stratigraphic horizon from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Maastrichtian"
+          },
+          {
+            "name": "measurementType",
+            "in": "query",
+            "description": "The measurement type of the record as it comes in the measurement or fact extension.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "measurementTypeID",
+            "in": "query",
+            "description": "The measurement type ID of the record as it comes in the extended measurement or fact extension.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "mediaType",
+            "in": "query",
+            "description": "The kind of multimedia associated with an occurrence as defined in our MediaType enumeration.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/MediaType",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "member",
+            "in": "query",
+            "description": "The full name of the lithostratigraphic member from which the material entity was collected.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Lava Dam Member"
+          },
+          {
+            "name": "modified",
+            "in": "query",
+            "description": "The most recent date-time on which the occurrnce was changed, according to the publisher.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "date-time",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "2023-02-20"
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "description": "The month of the year, starting with 1 for January.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 5
+          },
+          {
+            "name": "networkKey",
+            "in": "query",
+            "description": "The network's GBIF key (a UUID).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "2b7c7b4f-4d4f-40d3-94de-c28b6fa054a6"
+          },
+          {
+            "name": "nucleotideSequence.nucleotideSequenceID",
+            "in": "query",
+            "description": "MD5 hash of the final cleaned sequence.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.targetGene",
+            "in": "query",
+            "description": "Normalized gene name using the target_gene vocabulary.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.sequence",
+            "in": "query",
+            "description": "Final cleaned sequence. null if flagged invalid.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.sequenceLength",
+            "in": "query",
+            "description": "Length of cleaned sequence in base pairs.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.gcContent",
+            "in": "query",
+            "description": "GC content (0-1, based on A/C/G/T only).*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.nonIupacFraction",
+            "in": "query",
+            "description": "Fraction of non-IUPAC characters (0-1).*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.nonACGTNFraction",
+            "in": "query",
+            "description": "Fraction of ambiguous IUPAC codes, not A/C/G/T/N (0-1).*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.nFraction",
+            "in": "query",
+            "description": "Fraction of N characters (0-1).*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.nRunsCapped",
+            "in": "query",
+            "description": "Number of N-runs that were capped.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "nucleotideSequence.naturalLanguageDetected",
+            "in": "query",
+            "description": "Whether UNMERGED marker was found.*Parameter may be repeated.*",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "nucleotideSequence.endsTrimmed",
+            "in": "query",
+            "description": "Whether ends were trimmed.*Parameter may be repeated.*",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "nucleotideSequence.gapsOrWhitespaceRemoved",
+            "in": "query",
+            "description": "Whether gaps and/or whitespace were removed.*Parameter may be repeated.*",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "nucleotideSequence.invalid",
+            "in": "query",
+            "description": "nonIupacFraction > 0 and/or naturalLanguageDetected is true.*Parameter may be repeated.*",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "occurrenceId",
+            "in": "query",
+            "description": "A globally unique identifier for the occurrence record as provided by the publisher.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "URN:catalog:UWBM:Bird:126493"
+          },
+          {
+            "name": "occurrenceStatus",
+            "in": "query",
+            "description": "Either `ABSENT` or `PRESENT`; the presence or absence of the occurrence.",
+            "schema": {
+              "type": "string",
+              "description": "A statement about the presence or absence of a Taxon at a Location.\n\nFor definitions, see the [GBIF occurrence status vocabulary](https://rs.gbif.org/vocabulary/gbif/occurrence_status/).",
+              "enum": [
+                "PRESENT",
+                "ABSENT"
+              ],
+              "externalDocs": {
+                "description": "Darwin Core definition",
+                "url": "https://rs.tdwg.org/dwc/terms/occurrenceStatus"
+              }
+            },
+            "example": "PRESENT"
+          },
+          {
+            "name": "orderKey",
+            "in": "query",
+            "description": "Order classification key.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 1448
+          },
+          {
+            "name": "organismId",
+            "in": "query",
+            "description": "An identifier for the organism instance (as opposed to a particular digital record of the organism). May be a globally unique identifier or an identifier specific to the data set.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "organismQuantity",
+            "in": "query",
+            "description": "A number or enumeration value for the quantity of organisms.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 1
+          },
+          {
+            "name": "organismQuantityType",
+            "in": "query",
+            "description": "The type of quantification system used for the quantity of organisms.\n\n*Note this term is not aligned to a vocabulary.*\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "individuals"
+          },
+          {
+            "name": "otherCatalogNumbers",
+            "in": "query",
+            "description": "Previous or alternate fully qualified catalog numbers.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "parentEventId",
+            "in": "query",
+            "description": "An identifier for the information associated with a sampling event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "A 123"
+          },
+          {
+            "name": "pathway",
+            "in": "query",
+            "description": "The process by which an organism came to be in a given place at a given time, as defined in the [GBIF Pathway vocabulary](https://registry.gbif.org/vocabulary/Pathway/concepts).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Agriculture"
+          },
+          {
+            "name": "phylumKey",
+            "in": "query",
+            "description": "Phylum classification key.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 44
+          },
+          {
+            "name": "preparations",
+            "in": "query",
+            "description": "Preparation or preservation method for a specimen.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "pinned"
+          },
+          {
+            "name": "previousIdentifications",
+            "in": "query",
+            "description": "Previous assignment of name to the organism.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Chalepidae"
+          },
+          {
+            "name": "programme",
+            "in": "query",
+            "description": "A group of activities, often associated with a specific funding stream, such as the GBIF BID programme.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "BID"
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "description": "The identifier for a project, which is often assigned by a funded programme.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "bid-af2020-039-reg"
+          },
+          {
+            "name": "protocol",
+            "in": "query",
+            "description": "Protocol or mechanism used to provide the occurrence record.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "EML",
+                  "FEED",
+                  "WFS",
+                  "WMS",
+                  "TCS_RDF",
+                  "TCS_XML",
+                  "DWC_ARCHIVE",
+                  "DIGIR",
+                  "DIGIR_MANIS",
+                  "TAPIR",
+                  "BIOCASE",
+                  "BIOCASE_XML_ARCHIVE",
+                  "OAI_PMH",
+                  "COLDP",
+                  "CAMTRAP_DP",
+                  "DWC_DP",
+                  "BIOM_1_0",
+                  "BIOM_2_1",
+                  "ACEF",
+                  "TEXT_TREE",
+                  "OTHER"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "DWC_ARCHIVE"
+          },
+          {
+            "name": "publishingCountry",
+            "in": "query",
+            "description": "The 2-letter country code (as per ISO-3166-1) of the owning organization's country.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "AF",
+                  "AX",
+                  "AL",
+                  "DZ",
+                  "AS",
+                  "AD",
+                  "AO",
+                  "AI",
+                  "AQ",
+                  "AG",
+                  "AR",
+                  "AM",
+                  "AW",
+                  "AU",
+                  "AT",
+                  "AZ",
+                  "BS",
+                  "BH",
+                  "BD",
+                  "BB",
+                  "BY",
+                  "BE",
+                  "BZ",
+                  "BJ",
+                  "BM",
+                  "BT",
+                  "BO",
+                  "BQ",
+                  "BA",
+                  "BW",
+                  "BV",
+                  "BR",
+                  "IO",
+                  "BN",
+                  "BG",
+                  "BF",
+                  "BI",
+                  "KH",
+                  "CM",
+                  "CA",
+                  "CV",
+                  "KY",
+                  "CF",
+                  "TD",
+                  "CL",
+                  "CN",
+                  "CX",
+                  "CC",
+                  "CO",
+                  "KM",
+                  "CD",
+                  "CG",
+                  "CK",
+                  "CR",
+                  "CI",
+                  "HR",
+                  "CU",
+                  "CW",
+                  "CY",
+                  "CZ",
+                  "DK",
+                  "DJ",
+                  "DM",
+                  "DO",
+                  "EC",
+                  "EG",
+                  "SV",
+                  "GQ",
+                  "ER",
+                  "EE",
+                  "ET",
+                  "FK",
+                  "FO",
+                  "FJ",
+                  "FI",
+                  "FR",
+                  "GF",
+                  "PF",
+                  "TF",
+                  "GA",
+                  "GM",
+                  "GE",
+                  "DE",
+                  "GH",
+                  "GI",
+                  "GR",
+                  "GL",
+                  "GD",
+                  "GP",
+                  "GU",
+                  "GT",
+                  "GG",
+                  "GN",
+                  "GW",
+                  "GY",
+                  "HT",
+                  "HM",
+                  "VA",
+                  "HN",
+                  "HK",
+                  "HU",
+                  "IS",
+                  "IN",
+                  "ID",
+                  "IR",
+                  "IQ",
+                  "IE",
+                  "IM",
+                  "IL",
+                  "IT",
+                  "JM",
+                  "JP",
+                  "JE",
+                  "JO",
+                  "KZ",
+                  "KE",
+                  "KI",
+                  "KP",
+                  "KR",
+                  "KW",
+                  "KG",
+                  "LA",
+                  "LV",
+                  "LB",
+                  "LS",
+                  "LR",
+                  "LY",
+                  "LI",
+                  "LT",
+                  "LU",
+                  "MO",
+                  "MK",
+                  "MG",
+                  "MW",
+                  "MY",
+                  "MV",
+                  "ML",
+                  "MT",
+                  "MH",
+                  "MQ",
+                  "MR",
+                  "MU",
+                  "YT",
+                  "MX",
+                  "FM",
+                  "MD",
+                  "MC",
+                  "MN",
+                  "ME",
+                  "MS",
+                  "MA",
+                  "MZ",
+                  "MM",
+                  "NA",
+                  "NR",
+                  "NP",
+                  "NL",
+                  "NC",
+                  "NZ",
+                  "NI",
+                  "NE",
+                  "NG",
+                  "NU",
+                  "NF",
+                  "MP",
+                  "NO",
+                  "OM",
+                  "PK",
+                  "PW",
+                  "PS",
+                  "PA",
+                  "PG",
+                  "PY",
+                  "PE",
+                  "PH",
+                  "PN",
+                  "PL",
+                  "PT",
+                  "PR",
+                  "QA",
+                  "RE",
+                  "RO",
+                  "RU",
+                  "RW",
+                  "BL",
+                  "SH",
+                  "KN",
+                  "LC",
+                  "MF",
+                  "PM",
+                  "VC",
+                  "WS",
+                  "SM",
+                  "ST",
+                  "SA",
+                  "SN",
+                  "RS",
+                  "SC",
+                  "SL",
+                  "SG",
+                  "SX",
+                  "SK",
+                  "SI",
+                  "SB",
+                  "SO",
+                  "ZA",
+                  "GS",
+                  "SS",
+                  "ES",
+                  "LK",
+                  "SD",
+                  "SR",
+                  "SJ",
+                  "SZ",
+                  "SE",
+                  "CH",
+                  "SY",
+                  "TW",
+                  "TJ",
+                  "TZ",
+                  "TH",
+                  "TL",
+                  "TG",
+                  "TK",
+                  "TO",
+                  "TT",
+                  "TN",
+                  "TR",
+                  "TM",
+                  "TC",
+                  "TV",
+                  "UG",
+                  "UA",
+                  "AE",
+                  "GB",
+                  "US",
+                  "UM",
+                  "UY",
+                  "UZ",
+                  "VU",
+                  "VE",
+                  "VN",
+                  "VG",
+                  "VI",
+                  "WF",
+                  "EH",
+                  "YE",
+                  "ZM",
+                  "ZW",
+                  "AA",
+                  "XK",
+                  "XZ",
+                  "ZZ"
+                ],
+                "externalDocs": {
+                  "description": "API call to retrieve all official values.",
+                  "url": "https://api.gbif.org/v1/enumeration/country"
+                },
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AD"
+          },
+          {
+            "name": "publishedByGbifRegion",
+            "in": "query",
+            "description": "GBIF region based on the owning organization's country.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "An enumeration for all GBIF Regions. These are based on [IPBES regions](https://www.nature.com/articles/sdata20167/figures/1).\n\n*This is a political division,* part of GBIF's governance structure.",
+                "enum": [
+                  "AFRICA",
+                  "ASIA",
+                  "EUROPE",
+                  "NORTH_AMERICA",
+                  "OCEANIA",
+                  "LATIN_AMERICA",
+                  "ANTARCTICA"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "AFRICA"
+          },
+          {
+            "name": "publishingOrg",
+            "in": "query",
+            "description": "The publishing organization's GBIF key (a UUID).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "e2e717bf-551a-4917-bdc9-4fa0f342c530"
+          },
+          {
+            "name": "recordedBy",
+            "in": "query",
+            "description": "The person who recorded the occurrence.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "MiljoStyrelsen"
+          },
+          {
+            "name": "recordedByID",
+            "in": "query",
+            "description": "Identifier (e.g. ORCID) for the person who recorded the occurrence.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "https://orcid.org/0000-0003-0623-6682"
+          },
+          {
+            "name": "recordNumber",
+            "in": "query",
+            "description": "An identifier given to the record at the time it was recorded in the field.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 1
+          },
+          {
+            "name": "relativeOrganismQuantity",
+            "in": "query",
+            "description": "The relative measurement of the quantity of the organism (i.e. without absolute units).\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "repatriated",
+            "in": "query",
+            "description": "Searches for records whose publishing country is different to the country in which the record was recorded.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "sampleSizeUnit",
+            "in": "query",
+            "description": "The unit of measurement of the size (time duration, length, area, or volume) of a sample in a sampling event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "hectares"
+          },
+          {
+            "name": "sampleSizeValue",
+            "in": "query",
+            "description": "A numeric value for a measurement of the size (time duration, length, area, or volume) of a sample in a sampling event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 50.5
+          },
+          {
+            "name": "samplingProtocol",
+            "in": "query",
+            "description": "The name of, reference to, or description of the method or protocol used during a sampling event.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "malaise trap"
+          },
+          {
+            "name": "sex",
+            "in": "query",
+            "description": "The sex of the biological individual(s) represented in the occurrence.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "MALE"
+          },
+          {
+            "name": "scientificName",
+            "in": "query",
+            "description": "A scientific name from the [GBIF backbone](https://www.gbif.org/dataset/d7dddbf4-2cf0-4f39-9b2a-bb099caae36c) or the specified checklist (see checklistKey parameter). All included and synonym taxa are included in the search.\n\nUnder the hood a call to the [species match service](https://www.gbif.org/developer/species#searching) is done first to retrieve a taxonKey. Only unique scientific names will return results, homonyms (many monomials) return nothing! Consider to use the taxonKey parameter instead and the species match service directly.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Quercus robur"
+          },
+          {
+            "name": "speciesKey",
+            "in": "query",
+            "description": "Species classification key.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 2476674
+          },
+          {
+            "name": "startDayOfYear",
+            "in": "query",
+            "description": "The earliest integer day of the year on which the event occurred.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 5
+          },
+          {
+            "name": "stateProvince",
+            "in": "query",
+            "description": "The name of the next smaller administrative region than country (state, province, canton, department, region, etc.) in which the Location occurs.\n\nThis term does not have any data quality checks; see also the GADM parameters.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Leicestershire"
+          },
+          {
+            "name": "taxonConceptId",
+            "in": "query",
+            "description": "An identifier for the taxonomic concept to which the record refers - not for the nomenclatural details of a taxon.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "8fa58e08-08de-4ac1-b69c-1235340b7001"
+          },
+          {
+            "name": "taxonKey",
+            "in": "query",
+            "description": "A taxon key from the GBIF backbone or the specified checklist (see checklistKey parameter). All included (child) and synonym taxa are included in the search, so a search for Aves with taxonKey=212 (i.e. [/occurrence/search?taxonKey=212](https://api.gbif.org/v1/occurrence/search?taxonKey=212)) will match all birds, no matter which species.*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 2476674
+          },
+          {
+            "name": "taxonId",
+            "in": "query",
+            "description": "The taxon identifier provided to GBIF by the data publisher.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "urn:lsid:dyntaxa.se:Taxon:103026"
+          },
+          {
+            "name": "taxonomicIssue",
+            "in": "query",
+            "description": "*Experimental.* A specific taxonomic interpretation issue as defined in our OccurrenceIssue enumeration.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "TAXON_MATCH_FUZZY",
+                  "TAXON_MATCH_HIGHERRANK",
+                  "TAXON_MATCH_AGGREGATE",
+                  "TAXON_MATCH_SCIENTIFIC_NAME_ID_IGNORED",
+                  "TAXON_MATCH_TAXON_CONCEPT_ID_IGNORED",
+                  "TAXON_MATCH_TAXON_ID_IGNORED",
+                  "SCIENTIFIC_NAME_ID_NOT_FOUND",
+                  "TAXON_CONCEPT_ID_NOT_FOUND",
+                  "TAXON_ID_NOT_FOUND",
+                  "SCIENTIFIC_NAME_AND_ID_INCONSISTENT",
+                  "TAXON_MATCH_NONE"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "example": "TAXON_CONCEPT_ID_NOT_FOUND"
+          },
+          {
+            "name": "taxonomicStatus",
+            "in": "query",
+            "description": "A taxonomic status from our TaxonomicStatus enumeration.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ACCEPTED",
+                  "DOUBTFUL",
+                  "SYNONYM",
+                  "HETEROTYPIC_SYNONYM",
+                  "HOMOTYPIC_SYNONYM",
+                  "PROPARTE_SYNONYM",
+                  "MISAPPLIED",
+                  "AMBIGUOUS_SYNONYM",
+                  "PROVISIONALLY_ACCEPTED"
+                ],
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "SYNONYM"
+          },
+          {
+            "name": "typeStatus",
+            "in": "query",
+            "description": "Nomenclatural type (type status, typified scientific name, publication) applied to the subject.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "HOLOTYPE"
+          },
+          {
+            "name": "verbatimScientificName",
+            "in": "query",
+            "description": "The scientific name provided to GBIF by the data publisher, before interpretation and processing by GBIF.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Quercus robur L."
+          },
+          {
+            "name": "waterBody",
+            "in": "query",
+            "description": "The name of the water body in which the Locations occurs.\n\n*Parameter may be repeated.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": "Lake Michigan"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "description": "The 4 digit year. A year of 98 will be interpreted as AD 98.\n\n*Parameter may be repeated or a range.*",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "int32",
+                "uniqueItems": true
+              },
+              "uniqueItems": true
+            },
+            "example": 1998
+          },
+          {
+            "name": "geologicalTime",
+            "in": "query",
+            "description": "The geological time of an occurrence that is present in the chronostratigraphy terms. *Parameter may be repeated or a range.*",
+            "example": "Mesozoic",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lithostratigraphy",
+            "in": "query",
+            "description": "The lithostratigraphy of an occurrence that is present in the group, formation, member and bed terms",
+            "example": "Wayne Fm",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "biostratigraphy",
+            "in": "query",
+            "description": "The biostratigraphy of an occurrence that is present in the lowest and highest biostratigraphy terms",
+            "example": "Rhynchonella cuvieri Zone",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "matchCase",
+            "in": "query",
+            "description": "*Experimental.* Indicates if the search has to be case sensitive",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "shuffle",
+            "in": "query",
+            "description": "*Experimental.* Seed to sort the results randomly.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "abcdefgh"
+          },
+          {
+            "name": "hl",
+            "in": "query",
+            "description": "Set `hl=true` to highlight terms matching the query when in full-text search fields. The highlight will be an emphasis tag of class `gbifH1` e.g. [`/search?q=plant&hl=true`](https://api.gbif.org/v1/literature/search?q=plant&hl=true).\n\nFull-text search fields include: title, keyword, country, publishing country, publishing organization title, hosting organization title, and description. One additional full text field is searched which includes information from metadata documents, but the text of this field is not returned in the response.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": true
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Simple full-text search parameter. The value for this parameter can be a simple word or a phrase. Wildcards are not supported",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Controls the number of results in the page. Using too high a value will be overwritten with the maximum threshold, which is 300 for this service. Sensible defaults are used so this may be omitted.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Determines the offset for the search results. A limit of 20 and offset of 40 will get the third page of 20 results. This service has a maximum offset of 100,000.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "facet",
+            "in": "query",
+            "description": "A facet name used to retrieve the most frequent values for a field. Facets are allowed for all search parameters except geometry and geoDistance. This parameter may by repeated to request multiple facets, as in [this example](https://api.gbif.org/v1/occurrence/search?facet=datasetKey&facet=basisOfRecord&limit=0).\n\nNote terms not available for searching are not available for faceting.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "facetMincount",
+            "in": "query",
+            "description": "Used in combination with the facet parameter. Set facetMincount={#} to exclude facets with a count less than {#}, e.g. [/search?facet=basisOfRecord&limit=0&facetMincount=10000](https://api.gbif.org/v1/occurrence/search?facet=basisOfRecord&limit=0&facetMincount=1000000].",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "facetMultiselect",
+            "in": "query",
+            "description": "Used in combination with the facet parameter. Set facetMultiselect=true to still return counts for values that are not currently filtered, e.g. [/search?facet=basisOfRecord&limit=0&basisOfRecord=HUMAN_OBSERVATION&facetMultiselect=true](https://api.gbif.org/v1/occurrence/search?facet=basisOfRecord&limit=0&basisOfRecord=HUMAN_OBSERVATION&facetMultiselect=true) still shows Basis of Record values 'PRESERVED_SPECIMEN' and so on, even though Basis of Record is being filtered.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "facetLimit",
+            "in": "query",
+            "description": "Facet parameters allow paging requests using the parameters facetOffset and facetLimit",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "facetOffset",
+            "in": "query",
+            "description": "Facet parameters allow paging requests using the parameters facetOffset and facetLimit",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Occurrence search is valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponseOccurrenceOccurrenceSearchParameter"
+                }
+              },
+              "application/x-javascript": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponseOccurrenceOccurrenceSearchParameter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query, e.g. invalid vocabulary values"
+          }
+        },
+        "x-Order": {
+          "Order": "0000"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentIdentifier": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "ORCID",
+              "WIKIDATA",
+              "OTHER"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "Classification": {
+        "type": "object",
+        "properties": {
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "acceptedUsage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "taxonomicStatus": {
+            "type": "string"
+          },
+          "classification": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankedName"
+            }
+          },
+          "iucnRedListCategoryCode": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Count": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FacetOccurrenceSearchParameter": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "counts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Count"
+            }
+          }
+        }
+      },
+      "Gadm": {
+        "type": "object",
+        "properties": {
+          "level0": {
+            "$ref": "#/components/schemas/GadmFeature",
+            "description": "The top-level division for a country, territory or island.\n\nThis is usually a three-letter code from ISO 3166."
+          },
+          "level1": {
+            "$ref": "#/components/schemas/GadmFeature",
+            "description": "The first-level division from the GADM database."
+          },
+          "level2": {
+            "$ref": "#/components/schemas/GadmFeature",
+            "description": "The second-level division from the GADM database."
+          },
+          "level3": {
+            "$ref": "#/components/schemas/GadmFeature",
+            "description": "The third-level division from the GADM database."
+          }
+        }
+      },
+      "GadmFeature": {
+        "type": "object",
+        "description": "A region from the GADM database.",
+        "properties": {
+          "gid": {
+            "type": "string",
+            "description": "The identifier in GADM for the administrative division."
+          },
+          "name": {
+            "type": "string",
+            "description": "The English name in GADM for the administrative division."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Identifier": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "Other known identifier used for the same taxon. Can be a URL pointing to a webpage, an XML or RDF document, a DOI UUID or any other identifier."
+          },
+          "title": {
+            "type": "string",
+            "description": "The optional title of an identifier, mostly for linking."
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of identifier.",
+            "enum": [
+              "URL",
+              "LSID",
+              "HANDLER",
+              "DOI",
+              "UUID",
+              "FTP",
+              "URI",
+              "UNKNOWN",
+              "GBIF_PORTAL",
+              "GBIF_NODE",
+              "GBIF_PARTICIPANT",
+              "GRSCICOLL_ID",
+              "GRSCICOLL_URI",
+              "IH_IRN",
+              "ROR",
+              "GRID",
+              "CITES",
+              "SYMBIOTA_UUID",
+              "WIKIDATA",
+              "NCBI_BIOCOLLECTION",
+              "ISIL",
+              "CLB_DATASET_KEY",
+              "RNC_COLOMBIA"
+            ]
+          },
+          "identifierLink": {
+            "type": "string",
+            "description": "An HTTP link for an identifier, if a suitable, known resolver exists for the identifier type."
+          }
+        },
+        "required": [
+          "identifier",
+          "type"
+        ]
+      },
+      "IsoDateInterval": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "description": "The lower bound."
+          },
+          "to": {
+            "description": "The upper bound."
+          }
+        }
+      },
+      "MeasurementOrFact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "accuracy": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "determinedBy": {
+            "type": "string"
+          },
+          "determinedDate": {
+            "type": "string"
+          },
+          "remarks": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "value"
+        ]
+      },
+      "MediaObject": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The kind of media object.",
+            "enum": [
+              "StillImage",
+              "MovingImage",
+              "Sound",
+              "InteractiveResource"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "The format the image is exposed in."
+          },
+          "references": {
+            "type": "string",
+            "format": "uri",
+            "description": "An HTML webpage that shows the image or its metadata."
+          },
+          "title": {
+            "type": "string",
+            "description": "The media item title."
+          },
+          "description": {
+            "type": "string",
+            "description": "A longer description for this media item."
+          },
+          "source": {
+            "type": "string"
+          },
+          "audience": {
+            "type": "string",
+            "description": "A class or description for whom the image is intended or useful."
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The date and time this media item was created."
+          },
+          "creator": {
+            "type": "string",
+            "description": "The person that created the media item."
+          },
+          "contributor": {
+            "type": "string",
+            "description": "Any contributor in addition to the creator that helped in recording the media item."
+          },
+          "publisher": {
+            "type": "string",
+            "description": "An entity responsible for making the media item available."
+          },
+          "license": {
+            "type": "string",
+            "description": "Licence for this media item."
+          },
+          "rightsHolder": {
+            "type": "string",
+            "description": "A person or organization owning or managing rights over the media item."
+          },
+          "identifier": {
+            "type": "string",
+            "format": "uri",
+            "description": "The public URL that identifies and locates the media item."
+          }
+        },
+        "required": [
+          "identifier",
+          "type"
+        ]
+      },
+      "NucleotideSequence": {
+        "type": "object",
+        "description": "A nucleotide sequence.",
+        "properties": {
+          "nucleotideSequenceID": {
+            "type": "string"
+          },
+          "targetGene": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "string"
+          },
+          "sequenceLength": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "gcContent": {
+            "type": "number",
+            "format": "double"
+          },
+          "nonIupacFraction": {
+            "type": "number",
+            "format": "double"
+          },
+          "nonACGTNFraction": {
+            "type": "number",
+            "format": "double"
+          },
+          "nFraction": {
+            "type": "number",
+            "format": "double"
+          },
+          "nRunsCapped": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "naturalLanguageDetected": {
+            "type": "boolean"
+          },
+          "endsTrimmed": {
+            "type": "boolean"
+          },
+          "gapsOrWhitespaceRemoved": {
+            "type": "boolean"
+          },
+          "invalid": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Occurrence": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unique GBIF key for the occurrence.\n\nWe aim to keep these keys stable, but this is not possible in every case."
+          },
+          "datasetKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The UUID of the GBIF dataset containing this occurrence."
+          },
+          "publishingOrgKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The UUID of the organization which publishes the dataset containing this occurrence."
+          },
+          "networkKeys": {
+            "type": "array",
+            "description": "Any networks to which the dataset containing this occurrence is registered.",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "datasetCategory": {
+            "type": "array",
+            "description": "Categories assigned to the dataset containing this occurrence.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "installationKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The UUID of the technical installation hosted the dataset containing this occurrence."
+          },
+          "hostingOrganizationKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The UUID of the publishing organization which operates the technical installation hosting the dataset containing this occurrence."
+          },
+          "publishingCountry": {
+            "type": "string",
+            "description": "The country, territory or island based on ISO-3166 of the organization publishing the dataset containing this occurrence.",
+            "enum": [
+              "AF",
+              "AX",
+              "AL",
+              "DZ",
+              "AS",
+              "AD",
+              "AO",
+              "AI",
+              "AQ",
+              "AG",
+              "AR",
+              "AM",
+              "AW",
+              "AU",
+              "AT",
+              "AZ",
+              "BS",
+              "BH",
+              "BD",
+              "BB",
+              "BY",
+              "BE",
+              "BZ",
+              "BJ",
+              "BM",
+              "BT",
+              "BO",
+              "BQ",
+              "BA",
+              "BW",
+              "BV",
+              "BR",
+              "IO",
+              "BN",
+              "BG",
+              "BF",
+              "BI",
+              "KH",
+              "CM",
+              "CA",
+              "CV",
+              "KY",
+              "CF",
+              "TD",
+              "CL",
+              "CN",
+              "CX",
+              "CC",
+              "CO",
+              "KM",
+              "CD",
+              "CG",
+              "CK",
+              "CR",
+              "CI",
+              "HR",
+              "CU",
+              "CW",
+              "CY",
+              "CZ",
+              "DK",
+              "DJ",
+              "DM",
+              "DO",
+              "EC",
+              "EG",
+              "SV",
+              "GQ",
+              "ER",
+              "EE",
+              "ET",
+              "FK",
+              "FO",
+              "FJ",
+              "FI",
+              "FR",
+              "GF",
+              "PF",
+              "TF",
+              "GA",
+              "GM",
+              "GE",
+              "DE",
+              "GH",
+              "GI",
+              "GR",
+              "GL",
+              "GD",
+              "GP",
+              "GU",
+              "GT",
+              "GG",
+              "GN",
+              "GW",
+              "GY",
+              "HT",
+              "HM",
+              "VA",
+              "HN",
+              "HK",
+              "HU",
+              "IS",
+              "IN",
+              "ID",
+              "IR",
+              "IQ",
+              "IE",
+              "IM",
+              "IL",
+              "IT",
+              "JM",
+              "JP",
+              "JE",
+              "JO",
+              "KZ",
+              "KE",
+              "KI",
+              "KP",
+              "KR",
+              "KW",
+              "KG",
+              "LA",
+              "LV",
+              "LB",
+              "LS",
+              "LR",
+              "LY",
+              "LI",
+              "LT",
+              "LU",
+              "MO",
+              "MK",
+              "MG",
+              "MW",
+              "MY",
+              "MV",
+              "ML",
+              "MT",
+              "MH",
+              "MQ",
+              "MR",
+              "MU",
+              "YT",
+              "MX",
+              "FM",
+              "MD",
+              "MC",
+              "MN",
+              "ME",
+              "MS",
+              "MA",
+              "MZ",
+              "MM",
+              "NA",
+              "NR",
+              "NP",
+              "NL",
+              "NC",
+              "NZ",
+              "NI",
+              "NE",
+              "NG",
+              "NU",
+              "NF",
+              "MP",
+              "NO",
+              "OM",
+              "PK",
+              "PW",
+              "PS",
+              "PA",
+              "PG",
+              "PY",
+              "PE",
+              "PH",
+              "PN",
+              "PL",
+              "PT",
+              "PR",
+              "QA",
+              "RE",
+              "RO",
+              "RU",
+              "RW",
+              "BL",
+              "SH",
+              "KN",
+              "LC",
+              "MF",
+              "PM",
+              "VC",
+              "WS",
+              "SM",
+              "ST",
+              "SA",
+              "SN",
+              "RS",
+              "SC",
+              "SL",
+              "SG",
+              "SX",
+              "SK",
+              "SI",
+              "SB",
+              "SO",
+              "ZA",
+              "GS",
+              "SS",
+              "ES",
+              "LK",
+              "SD",
+              "SR",
+              "SJ",
+              "SZ",
+              "SE",
+              "CH",
+              "SY",
+              "TW",
+              "TJ",
+              "TZ",
+              "TH",
+              "TL",
+              "TG",
+              "TK",
+              "TO",
+              "TT",
+              "TN",
+              "TR",
+              "TM",
+              "TC",
+              "TV",
+              "UG",
+              "UA",
+              "AE",
+              "GB",
+              "US",
+              "UM",
+              "UY",
+              "UZ",
+              "VU",
+              "VE",
+              "VN",
+              "VG",
+              "VI",
+              "WF",
+              "EH",
+              "YE",
+              "ZM",
+              "ZW",
+              "AA",
+              "XK",
+              "XZ",
+              "ZZ"
+            ],
+            "externalDocs": {
+              "description": "API call to retrieve all official values.",
+              "url": "https://api.gbif.org/v1/enumeration/country"
+            }
+          },
+          "protocol": {
+            "type": "string",
+            "description": "The technical protocol by which this occurrence was retrieved from the publisher's systems.",
+            "enum": [
+              "EML",
+              "FEED",
+              "WFS",
+              "WMS",
+              "TCS_RDF",
+              "TCS_XML",
+              "DWC_ARCHIVE",
+              "DIGIR",
+              "DIGIR_MANIS",
+              "TAPIR",
+              "BIOCASE",
+              "BIOCASE_XML_ARCHIVE",
+              "OAI_PMH",
+              "COLDP",
+              "CAMTRAP_DP",
+              "DWC_DP",
+              "BIOM_1_0",
+              "BIOM_2_1",
+              "ACEF",
+              "TEXT_TREE",
+              "OTHER"
+            ]
+          },
+          "lastCrawled": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The time this occurrence was last retrieved from the publisher's systems."
+          },
+          "lastParsed": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The time this occurrence was last processed by GBIF's interpretation system \u201cPipelines\u201d.\n\nThis is the time the record was last changed in GBIF, **not** the time the record was last changed by the publisher.  Data is also reprocessed when we changed the taxonomic backbone, geographic data sources or other interpretation procedures.\n\nAn earlier interpretation system distinguished between \u201cparsing\u201d and \u201cinterpretation\u201d, but in the current system there is only one process \u2014 the two dates will always be the same."
+          },
+          "crawlId": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The sequence number of the attempt by GBIF to download (\u201dcrawl\u201d), interpret and index the dataset to which this occurrence belongs."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "The identifier for a project, often assigned by a funded programme."
+          },
+          "programmeAcronym": {
+            "type": "string",
+            "description": "The identifier for a programme which funded the digitization of this occurrence."
+          },
+          "extensions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The verbatim Darwin Core Archive extension fields for this occurrence.\n\nThe main key is the record class term (the row type in Darwin Core Archive), within that are  values with extension terms as keys."
+          },
+          "basisOfRecord": {
+            "type": "string",
+            "description": "The values of the Darwin Core term Basis of Record which can apply to occurrences.\n\nSee GBIF's [Darwin Core Type Vocabulary](https://rs.gbif.org/vocabulary/dwc/basis_of_record.xml) for definitions.",
+            "enum": [
+              "PRESERVED_SPECIMEN",
+              "FOSSIL_SPECIMEN",
+              "LIVING_SPECIMEN",
+              "OBSERVATION",
+              "HUMAN_OBSERVATION",
+              "MACHINE_OBSERVATION",
+              "MATERIAL_SAMPLE",
+              "LITERATURE",
+              "MATERIAL_CITATION",
+              "OCCURRENCE",
+              "UNKNOWN"
+            ],
+            "externalDocs": {
+              "description": "API call to retrieve all official values.",
+              "url": "https://api.gbif.org/v1/enumeration/basic/BasisOfRecord"
+            }
+          },
+          "individualCount": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The number of individuals present at the time of the Occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/individualCount"
+            }
+          },
+          "occurrenceStatus": {
+            "type": "string",
+            "description": "A statement about the presence or absence of a Taxon at a Location.\n\nFor definitions, see the [GBIF occurrence status vocabulary](https://rs.gbif.org/vocabulary/gbif/occurrence_status/).",
+            "enum": [
+              "PRESENT",
+              "ABSENT"
+            ],
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/occurrenceStatus"
+            }
+          },
+          "sex": {
+            "type": "string"
+          },
+          "lifeStage": {
+            "type": "string",
+            "description": "The age class or life stage of the Organism(s) at the time the Occurrence was recorded.\n\nValues are aligned to the [GBIF LifeStage vocabulary](https://registry.gbif.org/vocabulary/LifeStage/concepts)",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/lifeStage"
+            }
+          },
+          "establishmentMeans": {
+            "type": "string",
+            "description": "Statement about whether an organism or organisms have been introduced to a given place and time through the direct or indirect activity of modern humans.\n\nValues are aligned to the [GBIF EstablishmentMeans vocabulary](https://registry.gbif.org/vocabulary/EstablishmentMeans/concepts), which is derived from the [Darwin Core EstablishmentMeans vocabulary](https://dwc.tdwg.org/em/).",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/establishmentMeans"
+            }
+          },
+          "degreeOfEstablishment": {
+            "type": "string",
+            "description": "The degree to which an Organism survives, reproduces, and expands its range at the given place and time.\n\nValues are aligned to the [GBIF DegreeOfEstablishment vocabulary](https://registry.gbif.org/vocabulary/DegreeOfEstablishment/concepts), which is derived from the [Darwin Core DegreeOfEstablishment vocabulary](https://dwc.tdwg.org/doe/).",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/degreeOfEstablishment"
+            }
+          },
+          "pathway": {
+            "type": "string",
+            "description": "The process by which an Organism came to be in a given place at a given time.\n\nValues are aligned to the [GBIF Pathway vocabulary](https://registry.gbif.org/vocabulary/Pathway/concepts), which is derived from the [Darwin Core Pathway vocabulary](https://dwc.tdwg.org/pw/).",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/pathway"
+            }
+          },
+          "classifications": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Classification"
+            },
+            "description": "The map of classifications associated with this occurrence keyed by checklistKey.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "taxonKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the most specific (lowest rank) taxon for this occurrence.  This could be a synonym, see `acceptedTaxonKey`.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "kingdomKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the kingdom of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "phylumKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the phylum of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "classKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the class of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "orderKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the order of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "familyKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the family of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "genusKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the genus of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "subgenusKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the subgenus of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "speciesKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the species of thisoccurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "acceptedTaxonKey": {
+            "type": "integer",
+            "format": "int32",
+            "deprecated": true,
+            "description": "A taxon key from the [GBIF backbone](https://doi.org/10.15468/39omei) for the accepted taxon of this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "scientificName": {
+            "type": "string",
+            "description": "The scientific name (including authorship) for the taxon from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.  This could be a synonym, see also `acceptedScientificName`.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "scientificNameAuthorship": {
+            "type": "string",
+            "description": "The scientific name authorship for the taxon from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.  This could be a synonym, see also `acceptedScientificName`.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "acceptedScientificName": {
+            "type": "string",
+            "description": "The accepted scientific name (including authorship) for the taxon from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "kingdom": {
+            "type": "string",
+            "description": "The kingdom name (excluding authorship) for the kingdom from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "phylum": {
+            "type": "string",
+            "description": "The phylum name (excluding authorship) for the phylum from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "order": {
+            "type": "string",
+            "description": "The order name (excluding authorship) for the order from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "family": {
+            "type": "string",
+            "description": "The family name (excluding authorship) for the family from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "genus": {
+            "type": "string",
+            "description": "The genus name (excluding authorship) for the genus from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "subgenus": {
+            "type": "string",
+            "description": "The subgenus name (excluding authorship) for the subgenus from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "species": {
+            "type": "string",
+            "description": "The species name (excluding authorship) for the species from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "genericName": {
+            "type": "string",
+            "description": "The genus name part of the species name from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/genericName"
+            }
+          },
+          "specificEpithet": {
+            "type": "string",
+            "description": "The specific name part of the species name from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/specificEpithet"
+            }
+          },
+          "infraspecificEpithet": {
+            "type": "string",
+            "description": "The infraspecific name part of the species name from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/infraspecificEpithet"
+            }
+          },
+          "taxonRank": {
+            "type": "string",
+            "description": "The taxonomic rank of the most specific name in the scientificName.",
+            "enum": [
+              "DOMAIN",
+              "SUPERKINGDOM",
+              "KINGDOM",
+              "SUBKINGDOM",
+              "INFRAKINGDOM",
+              "SUPERPHYLUM",
+              "PHYLUM",
+              "SUBPHYLUM",
+              "INFRAPHYLUM",
+              "SUPERCLASS",
+              "CLASS",
+              "SUBCLASS",
+              "INFRACLASS",
+              "PARVCLASS",
+              "SUPERLEGION",
+              "LEGION",
+              "SUBLEGION",
+              "INFRALEGION",
+              "SUPERCOHORT",
+              "COHORT",
+              "SUBCOHORT",
+              "INFRACOHORT",
+              "MAGNORDER",
+              "SUPERORDER",
+              "GRANDORDER",
+              "ORDER",
+              "SUBORDER",
+              "INFRAORDER",
+              "PARVORDER",
+              "SUPERFAMILY",
+              "FAMILY",
+              "SUBFAMILY",
+              "INFRAFAMILY",
+              "SUPERTRIBE",
+              "TRIBE",
+              "SUBTRIBE",
+              "INFRATRIBE",
+              "SUPRAGENERIC_NAME",
+              "GENUS",
+              "SUBGENUS",
+              "INFRAGENUS",
+              "SECTION",
+              "SUBSECTION",
+              "SERIES",
+              "SUBSERIES",
+              "INFRAGENERIC_NAME",
+              "SPECIES_AGGREGATE",
+              "SPECIES",
+              "INFRASPECIFIC_NAME",
+              "GREX",
+              "SUBSPECIES",
+              "CULTIVAR_GROUP",
+              "CONVARIETY",
+              "INFRASUBSPECIFIC_NAME",
+              "PROLES",
+              "RACE",
+              "NATIO",
+              "ABERRATION",
+              "MORPH",
+              "VARIETY",
+              "SUBVARIETY",
+              "FORM",
+              "SUBFORM",
+              "PATHOVAR",
+              "BIOVAR",
+              "CHEMOVAR",
+              "MORPHOVAR",
+              "PHAGOVAR",
+              "SEROVAR",
+              "CHEMOFORM",
+              "FORMA_SPECIALIS",
+              "CULTIVAR",
+              "STRAIN",
+              "OTHER",
+              "UNRANKED"
+            ],
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/taxonRank"
+            }
+          },
+          "taxonomicStatus": {
+            "type": "string",
+            "description": "The status of the use of the scientificName as a label for a taxon.",
+            "enum": [
+              "ACCEPTED",
+              "DOUBTFUL",
+              "SYNONYM",
+              "HETEROTYPIC_SYNONYM",
+              "HOMOTYPIC_SYNONYM",
+              "PROPARTE_SYNONYM",
+              "MISAPPLIED",
+              "AMBIGUOUS_SYNONYM",
+              "PROVISIONALLY_ACCEPTED"
+            ],
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/taxonomicStatus"
+            }
+          },
+          "iucnRedListCategory": {
+            "type": "string",
+            "description": "The IUCN Red List Category of the taxon of this occurrence.\n\nSee the [GBIF vocabulary](https://rs.gbif.org/vocabulary/iucn/threat_status/) for the values and their definitions, and the [IUCN Red List of Threatened Species dataset in GBIF](https://doi.org/10.15468/0qnb58) for the version of the Red List GBIF's interpretation procedures are using.",
+            "externalDocs": {
+              "description": "GBIF vocabulary",
+              "url": "https://rs.gbif.org/vocabulary/iucn/threat_status/"
+            }
+          },
+          "dateIdentified": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The date on which the subject was determined as representing the Taxon.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/dateIdentified"
+            }
+          },
+          "decimalLatitude": {
+            "type": "number",
+            "format": "double",
+            "description": "The geographic latitude (in decimal degrees, using the WGS84 datum) of the geographic centre of the location of the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/decimalLatitude"
+            }
+          },
+          "decimalLongitude": {
+            "type": "number",
+            "format": "double",
+            "description": "The geographic longitude (in decimal degrees, using the WGS84 datum) of the geographic centre of the location of the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/decimalLongitude"
+            }
+          },
+          "coordinatePrecision": {
+            "type": "number",
+            "format": "double",
+            "description": "A decimal representation of the precision of the coordinates given in the decimalLatitude and decimalLongitude.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/coordinatePrecision"
+            }
+          },
+          "coordinateUncertaintyInMeters": {
+            "type": "number",
+            "format": "double",
+            "description": "The horizontal distance (in metres) from the given decimalLatitude and decimalLongitude describing the smallest circle containing the whole of the Location.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/coordinateUncertaintyInMeters"
+            }
+          },
+          "coordinateAccuracy": {
+            "type": "number",
+            "format": "double",
+            "deprecated": true,
+            "description": "**Deprecated.**  This value is always null.  It is an obsolete Darwin Core term.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "elevation": {
+            "type": "number",
+            "format": "double",
+            "description": "Elevation (altitude) in metres above sea level.  This is not a current Darwin Core term."
+          },
+          "elevationAccuracy": {
+            "type": "number",
+            "format": "double",
+            "description": "The value of the potential error associated with the elevation.  This is not a current Darwin Core term."
+          },
+          "depth": {
+            "type": "number",
+            "format": "double",
+            "description": "Depth in metres below sea level.  This is not a current Darwin Core term."
+          },
+          "depthAccuracy": {
+            "type": "number",
+            "format": "double",
+            "description": "The value of the potential error associated with the depth.  This is not a current Darwin Core term."
+          },
+          "continent": {
+            "type": "string",
+            "description": "The continent, based on a 7 continent model described on [Wikipedia](https://en.wikipedia.org/wiki/Continent#Number_of_continents) and the [World Geographical Scheme for Recording Plant Distributions (WGSRPD)](https://www.tdwg.org/standards/109).\n\nIn particular this splits the Americas into North and South America with North America including the Caribbean (except Trinidad and Tobago) and reaching down and including Panama.\n\nSee the [GBIF Continents](https://github.com/gbif/continents/) for the exact divisions.\n\n*This is a geographical division.  See `GBIFRegion` for GBIF's political divisions.*",
+            "enum": [
+              "AFRICA",
+              "ANTARCTICA",
+              "ASIA",
+              "OCEANIA",
+              "EUROPE",
+              "NORTH_AMERICA",
+              "SOUTH_AMERICA"
+            ],
+            "externalDocs": {
+              "description": "API call to retrieve all official values.",
+              "url": "https://api.gbif.org/v1/enumeration/basic/Continent"
+            }
+          },
+          "stateProvince": {
+            "type": "string",
+            "description": "The name of the next-smaller administrative region than country (state, province, canton, department, region, etc.) in which the occurrence occurs.\n\nThis value is unaltered by GBIF's processing; see also the GADM fields.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/stateProvince"
+            }
+          },
+          "gadm": {
+            "$ref": "#/components/schemas/Gadm",
+            "description": "The administrative divisions according to the [GADM database](https://gadm.org/).\n\nThis value is applied by GBIF's processing without consideration of the `stateProvince`, `county` or `locality` fields."
+          },
+          "waterBody": {
+            "type": "string",
+            "description": "The name of the water body in which the Location occurs.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/waterBody"
+            }
+          },
+          "distanceFromCentroidInMeters": {
+            "type": "number",
+            "format": "double",
+            "description": "The distance in metres of the occurrence from a centroid known to be applied to occurrences during georeferencing.  This can potentially indicate low-precision georeferencing, check the values of `coordinateUncertaintyInMeters` and `georeferenceRemarks`."
+          },
+          "higherGeography": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of geographic names less specific than the information captured in the dwc:locality term.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/higherGeography"
+            }
+          },
+          "georeferencedBy": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of names of people, groups, or organizations who determined the georeference (spatial representation) for the dcterms:Location.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/georeferencedBy"
+            }
+          },
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The four-digit year in which the event occurred, according to the Common Era calendar.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/year"
+            },
+            "maximum": 2030,
+            "minimum": 1500
+          },
+          "month": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The integer month in which the Event occurred.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/month"
+            },
+            "maximum": 12,
+            "minimum": 1
+          },
+          "day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The integer day of the month on which the Event occurred.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/day"
+            },
+            "maximum": 31,
+            "minimum": 1
+          },
+          "eventDate": {
+            "$ref": "#/components/schemas/IsoDateInterval",
+            "description": "The date-time during which an Event occurred. For occurrences, this is the date-time when the event was recorded. Not suitable for a time in a geological context.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/eventDate"
+            }
+          },
+          "startDayOfYear": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The latest integer day of the year on which the Event occurred (1 for 1 January, 365 for 31 December, except in a leap year, in which case it is 366).",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/endDayOfYear"
+            },
+            "maximum": 366,
+            "minimum": 1
+          },
+          "endDayOfYear": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The earliest integer day of the year on which the Event occurred (1 for 1 January, 365 for 31 December, except in a leap year, in which case it is 366).",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/startDayOfYear"
+            },
+            "maximum": 366,
+            "minimum": 1
+          },
+          "typeStatus": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of nomenclatural types (type status, typified scientific name, publication) applied to the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/typeStatus"
+            }
+          },
+          "typifiedName": {
+            "type": "string",
+            "description": "The scientific name that is based on the type specimen.\n\nThis is not yet a Darwin Core term, see the [proposal to add it](https://github.com/tdwg/dwc/issues/28)."
+          },
+          "issues": {
+            "type": "array",
+            "description": "A specific interpretation issue found during processing and interpretation of the record.\n\nSee the https://links.gbif.org/occurrence-issues[list of occurrence issues] and the https://gbif.github.io/gbif-api/apidocs/org/gbif/api/vocabulary/OccurrenceIssue.html[OccurrenceIssue enumeration] for possible values and definitions.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ZERO_COORDINATE",
+                "COORDINATE_OUT_OF_RANGE",
+                "COORDINATE_INVALID",
+                "COORDINATE_ROUNDED",
+                "GEODETIC_DATUM_INVALID",
+                "GEODETIC_DATUM_ASSUMED_WGS84",
+                "COORDINATE_REPROJECTED",
+                "COORDINATE_REPROJECTION_FAILED",
+                "COORDINATE_REPROJECTION_SUSPICIOUS",
+                "COORDINATE_ACCURACY_INVALID",
+                "COORDINATE_PRECISION_INVALID",
+                "COORDINATE_UNCERTAINTY_METERS_INVALID",
+                "COORDINATE_PRECISION_UNCERTAINTY_MISMATCH",
+                "FOOTPRINT_SRS_INVALID",
+                "FOOTPRINT_WKT_MISMATCH",
+                "FOOTPRINT_WKT_INVALID",
+                "COUNTRY_COORDINATE_MISMATCH",
+                "COUNTRY_MISMATCH",
+                "COUNTRY_INVALID",
+                "COUNTRY_DERIVED_FROM_COORDINATES",
+                "CONTINENT_COORDINATE_MISMATCH",
+                "CONTINENT_COUNTRY_MISMATCH",
+                "CONTINENT_INVALID",
+                "CONTINENT_DERIVED_FROM_COUNTRY",
+                "CONTINENT_DERIVED_FROM_COORDINATES",
+                "PRESUMED_SWAPPED_COORDINATE",
+                "PRESUMED_NEGATED_LONGITUDE",
+                "PRESUMED_NEGATED_LATITUDE",
+                "RECORDED_DATE_MISMATCH",
+                "RECORDED_DATE_INVALID",
+                "RECORDED_DATE_UNLIKELY",
+                "TAXON_MATCH_FUZZY",
+                "TAXON_MATCH_HIGHERRANK",
+                "TAXON_MATCH_AGGREGATE",
+                "TAXON_MATCH_SCIENTIFIC_NAME_ID_IGNORED",
+                "TAXON_MATCH_TAXON_CONCEPT_ID_IGNORED",
+                "TAXON_MATCH_TAXON_ID_IGNORED",
+                "SCIENTIFIC_NAME_ID_NOT_FOUND",
+                "TAXON_CONCEPT_ID_NOT_FOUND",
+                "TAXON_ID_NOT_FOUND",
+                "SCIENTIFIC_NAME_AND_ID_INCONSISTENT",
+                "TAXON_MATCH_NONE",
+                "TAXON_MATCH_NAME_AND_ID_AMBIGUOUS",
+                "DEPTH_NOT_METRIC",
+                "DEPTH_UNLIKELY",
+                "DEPTH_MIN_MAX_SWAPPED",
+                "DEPTH_NON_NUMERIC",
+                "ELEVATION_UNLIKELY",
+                "ELEVATION_MIN_MAX_SWAPPED",
+                "ELEVATION_NOT_METRIC",
+                "ELEVATION_NON_NUMERIC",
+                "MODIFIED_DATE_INVALID",
+                "MODIFIED_DATE_UNLIKELY",
+                "IDENTIFIED_DATE_UNLIKELY",
+                "IDENTIFIED_DATE_INVALID",
+                "BASIS_OF_RECORD_INVALID",
+                "TYPE_STATUS_INVALID",
+                "SUSPECTED_TYPE",
+                "MULTIMEDIA_DATE_INVALID",
+                "MULTIMEDIA_URI_INVALID",
+                "REFERENCES_URI_INVALID",
+                "INTERPRETATION_ERROR",
+                "INDIVIDUAL_COUNT_INVALID",
+                "INDIVIDUAL_COUNT_CONFLICTS_WITH_OCCURRENCE_STATUS",
+                "OCCURRENCE_STATUS_UNPARSABLE",
+                "OCCURRENCE_STATUS_INFERRED_FROM_INDIVIDUAL_COUNT",
+                "OCCURRENCE_STATUS_INFERRED_FROM_BASIS_OF_RECORD",
+                "GEOREFERENCED_DATE_UNLIKELY",
+                "GEOREFERENCED_DATE_INVALID",
+                "AMBIGUOUS_INSTITUTION",
+                "AMBIGUOUS_COLLECTION",
+                "INSTITUTION_MATCH_NONE",
+                "COLLECTION_MATCH_NONE",
+                "INSTITUTION_MATCH_FUZZY",
+                "COLLECTION_MATCH_FUZZY",
+                "INSTITUTION_COLLECTION_MISMATCH",
+                "POSSIBLY_ON_LOAN",
+                "DIFFERENT_OWNER_INSTITUTION",
+                "ERA_OR_ERATHEM_INFERRED_FROM_PARENT_RANK",
+                "PERIOD_OR_SYSTEM_INFERRED_FROM_PARENT_RANK",
+                "EPOCH_OR_SERIES_INFERRED_FROM_PARENT_RANK",
+                "AGE_OR_STAGE_INFERRED_FROM_PARENT_RANK",
+                "EON_OR_EONOTHEM_RANK_MISMATCH",
+                "ERA_OR_ERATHEM_RANK_MISMATCH",
+                "PERIOD_OR_SYSTEM_RANK_MISMATCH",
+                "EPOCH_OR_SERIES_RANK_MISMATCH",
+                "AGE_OR_STAGE_RANK_MISMATCH",
+                "EON_OR_EONOTHEM_INVALID_RANGE",
+                "ERA_OR_ERATHEM_INVALID_RANGE",
+                "PERIOD_OR_SYSTEM_INVALID_RANGE",
+                "EPOCH_OR_SERIES_INVALID_RANGE",
+                "AGE_OR_STAGE_INVALID_RANGE",
+                "EON_OR_EONOTHEM_AND_ERA_OR_ERATHEM_MISMATCH",
+                "ERA_OR_ERATHEM_AND_PERIOD_OR_SYSTEM_MISMATCH",
+                "PERIOD_OR_SYSTEM_AND_EPOCH_OR_SERIES_MISMATCH",
+                "EPOCH_OR_SERIES_AND_AGE_OR_STAGE_MISMATCH",
+                "NUCLEOTIDE_SEQUENCE_NATURAL_LANGUAGE",
+                "NUCLEOTIDE_SEQUENCE_ENDS_TRIMMED",
+                "NUCLEOTIDE_SEQUENCE_GAPS_REMOVED",
+                "NUCLEOTIDE_SEQUENCE_INVALID",
+                "NUCLEOTIDE_SEQUENCE_HIGH_N_FRACTION",
+                "NUCLEOTIDE_SEQUENCE_HIGH_AMBIGUITY",
+                "TARGET_GENE_INVALID",
+                "DUPLICATE_NUCLEOTIDE_SEQUENCES_COLLAPSED",
+                "PARENT_EVENT_INFINITE_LINEAGE"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The most recent date-time on which the occurrence was changed, according to the publisher.",
+            "externalDocs": {
+              "description": "Dublin Core definition",
+              "url": "https://purl.org/dc/terms/modified"
+            }
+          },
+          "lastInterpreted": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The time this occurrence was last processed by GBIF's interpretation system \u201cPipelines\u201d.\n\nThis is the time the record was last changed in GBIF, **not** the time the record was last changed by the publisher.  Data is also reprocessed when we changed the taxonomic backbone, geographic data sources or other interpretation procedures.\n\nAn earlier interpretation system distinguished between \u201cparsing\u201d and \u201cinterpretation\u201d, but in the current system there is only one process \u2014 the two dates will always be the same."
+          },
+          "references": {
+            "type": "string",
+            "format": "uri",
+            "description": "A related resource that is referenced, cited, or otherwise pointed to by the described resource.",
+            "externalDocs": {
+              "description": "Dublin Core definition",
+              "url": "https://purl.org/dc/terms/references"
+            }
+          },
+          "license": {
+            "type": "string",
+            "description": "A legal document giving official permission to do something with the occurrence.",
+            "enum": [
+              "CC0_1_0",
+              "CC_BY_4_0",
+              "CC_BY_NC_4_0",
+              "UNSPECIFIED",
+              "UNSUPPORTED"
+            ],
+            "externalDocs": {
+              "description": "Dublin Core definition",
+              "url": "https://purl.org/dc/terms/license"
+            }
+          },
+          "organismQuantity": {
+            "type": "number",
+            "format": "double",
+            "description": "A number or enumeration value for the quantity of organisms.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/organismQuantity"
+            }
+          },
+          "organismQuantityType": {
+            "type": "string",
+            "description": "The type of quantification system used for the quantity of organisms.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/organismQuantityType"
+            }
+          },
+          "sampleSizeUnit": {
+            "type": "string",
+            "description": "The unit of measurement of the size (time duration, length, area, or volume) of a sample in a sampling event.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/sampleSizeUnit"
+            }
+          },
+          "sampleSizeValue": {
+            "type": "number",
+            "format": "double",
+            "description": "A numeric value for a measurement of the size (time duration, length, area, or volume) of a sample in a sampling event.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/sampleSizeValue"
+            }
+          },
+          "relativeOrganismQuantity": {
+            "type": "number",
+            "format": "double",
+            "description": "The relative measurement of the quantity of the organism (i.e. without absolute units)."
+          },
+          "isSequenced": {
+            "type": "boolean",
+            "description": "Flag occurrence when associatedSequences/extension exists"
+          },
+          "associatedSequences": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of identifiers (publication, global unique identifier, URI) of genetic sequence information associated with the material entity.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/associatedSequences"
+            }
+          },
+          "identifiers": {
+            "type": "array",
+            "description": "Alternative identifiers for the occurrence.",
+            "externalDocs": {
+              "description": "GBIF Alternative Identifiers extension",
+              "url": "https://rs.gbif.org/terms/1.0/Identifier"
+            },
+            "items": {
+              "$ref": "#/components/schemas/Identifier"
+            }
+          },
+          "media": {
+            "type": "array",
+            "description": "Multimedia related to te occurrence.",
+            "externalDocs": {
+              "description": "GBIF Multimedia extension",
+              "url": "https://rs.gbif.org/terms/1.0/Multimedia"
+            },
+            "items": {
+              "$ref": "#/components/schemas/MediaObject"
+            }
+          },
+          "facts": {
+            "type": "array",
+            "description": "Measurements or facts about the the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/MeasurementOrFact"
+            },
+            "items": {
+              "$ref": "#/components/schemas/MeasurementOrFact"
+            }
+          },
+          "relations": {
+            "type": "array",
+            "description": "Relationships between occurrences.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/ResourceRelationship"
+            },
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceRelation"
+            }
+          },
+          "institutionKey": {
+            "type": "string",
+            "description": "**Experimental.**  The UUID of the institution holding the specimen occurrence, from GRSciColl."
+          },
+          "collectionKey": {
+            "type": "string",
+            "description": "**Experimental.**  The UUID of the collection containing the specimen occurrence, from GRSciColl."
+          },
+          "isInCluster": {
+            "type": "boolean",
+            "description": "**Experimental.**  Whether the occurrence belongs to a machine-calculated cluster of probable duplicate occurrences.",
+            "externalDocs": {
+              "description": "GBIF Data Blog",
+              "url": "https://data-blog.gbif.org/post/clustering-occurrences/"
+            }
+          },
+          "datasetID": {
+            "type": "string",
+            "description": "An identifier for the set of data. May be a global unique identifier or an identifier specific to a collection or institution.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/datasetID"
+            }
+          },
+          "datasetName": {
+            "type": "string",
+            "description": "The name identifying the data set from which the record was derived.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "otherCatalogNumbers": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of previous or alternate fully qualified catalogue numbers or other human-used identifiers for the same occurrence, whether in the current or any other data set or collection.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/otherCatalogNumbers"
+            }
+          },
+          "earliestEonOrLowestEonothem": {
+            "type": "string",
+            "description": "The full name of the earliest possible geochronologic eon or lowest chrono-stratigraphic eonothem or the informal name (\"Precambrian\") attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/earliestEonOrLowestEonothem"
+            }
+          },
+          "latestEonOrHighestEonothem": {
+            "type": "string",
+            "description": "The full name of the latest possible geochronologic eon or highest chrono-stratigraphic eonothem or the informal name (\"Precambrian\") attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/latestEonOrHighestEonothem"
+            }
+          },
+          "earliestEraOrLowestErathem": {
+            "type": "string",
+            "description": "The full name of the earliest possible geochronologic era or lowest chronostratigraphic erathem attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/earliestEraOrLowestErathem"
+            }
+          },
+          "latestEraOrHighestErathem": {
+            "type": "string",
+            "description": "The full name of the latest possible geochronologic era or highest chronostratigraphic erathem attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/latestEraOrHighestErathem"
+            }
+          },
+          "earliestPeriodOrLowestSystem": {
+            "type": "string",
+            "description": "The full name of the earliest possible geochronologic period or lowest chronostratigraphic system attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/earliestPeriodOrLowestSystem"
+            }
+          },
+          "latestPeriodOrHighestSystem": {
+            "type": "string",
+            "description": "The full name of the latest possible geochronologic period or highest chronostratigraphic system attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/latestPeriodOrHighestSystem"
+            }
+          },
+          "earliestEpochOrLowestSeries": {
+            "type": "string",
+            "description": "The full name of the earliest possible geochronologic epoch or lowest chronostratigraphic series attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/earliestEpochOrLowestSeries"
+            }
+          },
+          "latestEpochOrHighestSeries": {
+            "type": "string",
+            "description": "The full name of the latest possible geochronologic epoch or highest chronostratigraphic series attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/latestEpochOrHighestSeries"
+            }
+          },
+          "earliestAgeOrLowestStage": {
+            "type": "string",
+            "description": "The full name of the earliest possible geochronologic age or lowest chronostratigraphic stage attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/earliestAgeOrLowestStage"
+            }
+          },
+          "latestAgeOrHighestStage": {
+            "type": "string",
+            "description": "The full name of the latest possible geochronologic age or highest chronostratigraphic stage attributable to the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/latestAgeOrHighestStage"
+            }
+          },
+          "lowestBiostratigraphicZone": {
+            "type": "string",
+            "description": "The full name of the lowest possible geological biostratigraphic zone of the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/lowestBiostratigraphicZone"
+            }
+          },
+          "highestBiostratigraphicZone": {
+            "type": "string",
+            "description": "The full name of the highest possible geological biostratigraphic zone of the stratigraphic horizon from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/highestBiostratigraphicZone"
+            }
+          },
+          "group": {
+            "type": "string",
+            "description": "The full name of the lithostratigraphic group from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/group"
+            }
+          },
+          "formation": {
+            "type": "string",
+            "description": "The full name of the lithostratigraphic formation from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/formation"
+            }
+          },
+          "member": {
+            "type": "string",
+            "description": "The full name of the lithostratigraphic member from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/member"
+            }
+          },
+          "bed": {
+            "type": "string",
+            "description": "The full name of the lithostratigraphic bed from which the dwc:MaterialEntity was collected.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/bed"
+            }
+          },
+          "recordedBy": {
+            "type": "string",
+            "description": "A person, group, or organization responsible for recording the original occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/recordedBy"
+            }
+          },
+          "identifiedBy": {
+            "type": "string",
+            "description": "A list (concatenated and separated) of names of people, groups, or organizations who assigned the Taxon to the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/identifiedBy"
+            }
+          },
+          "preparations": {
+            "type": "string",
+            "description": "A preparation or preservation method for a specimen.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/preparations"
+            }
+          },
+          "samplingProtocol": {
+            "type": "string",
+            "description": "The methods or protocols used during an Event, denoted by an IRI.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/samplingProtocol"
+            }
+          },
+          "dnaSequenceID": {
+            "type": "array",
+            "deprecated": true,
+            "description": "**Deprecated: use the nucleotideSequence instead.**  The DNA sequence ID of an occurrence.",
+            "items": {
+              "type": "string",
+              "deprecated": true
+            }
+          },
+          "nucleotideSequence": {
+            "type": "array",
+            "description": "Nucleotide Sequence objects of an occurrence.",
+            "items": {
+              "$ref": "#/components/schemas/NucleotideSequence"
+            }
+          },
+          "verbatimScientificName": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "geodeticDatum": {
+            "type": "string",
+            "description": "The geodetic datum for the interpreted decimal coordinates.\n\nCoordinates are reprojected to WGS84 if they exist, so this field is either null or `WGS84`."
+          },
+          "class": {
+            "type": "string",
+            "description": "The class name (excluding authorship) for the class from the [GBIF backbone](https://doi.org/10.15468/39omei) matched to this occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/"
+            }
+          },
+          "countryCode": {
+            "type": "string",
+            "description": "The 2-letter country code (as per ISO-3166-1) of the country, territory or area in which the occurrence was recorded.",
+            "enum": [
+              "AF",
+              "AX",
+              "AL",
+              "DZ",
+              "AS",
+              "AD",
+              "AO",
+              "AI",
+              "AQ",
+              "AG",
+              "AR",
+              "AM",
+              "AW",
+              "AU",
+              "AT",
+              "AZ",
+              "BS",
+              "BH",
+              "BD",
+              "BB",
+              "BY",
+              "BE",
+              "BZ",
+              "BJ",
+              "BM",
+              "BT",
+              "BO",
+              "BQ",
+              "BA",
+              "BW",
+              "BV",
+              "BR",
+              "IO",
+              "BN",
+              "BG",
+              "BF",
+              "BI",
+              "KH",
+              "CM",
+              "CA",
+              "CV",
+              "KY",
+              "CF",
+              "TD",
+              "CL",
+              "CN",
+              "CX",
+              "CC",
+              "CO",
+              "KM",
+              "CD",
+              "CG",
+              "CK",
+              "CR",
+              "CI",
+              "HR",
+              "CU",
+              "CW",
+              "CY",
+              "CZ",
+              "DK",
+              "DJ",
+              "DM",
+              "DO",
+              "EC",
+              "EG",
+              "SV",
+              "GQ",
+              "ER",
+              "EE",
+              "ET",
+              "FK",
+              "FO",
+              "FJ",
+              "FI",
+              "FR",
+              "GF",
+              "PF",
+              "TF",
+              "GA",
+              "GM",
+              "GE",
+              "DE",
+              "GH",
+              "GI",
+              "GR",
+              "GL",
+              "GD",
+              "GP",
+              "GU",
+              "GT",
+              "GG",
+              "GN",
+              "GW",
+              "GY",
+              "HT",
+              "HM",
+              "VA",
+              "HN",
+              "HK",
+              "HU",
+              "IS",
+              "IN",
+              "ID",
+              "IR",
+              "IQ",
+              "IE",
+              "IM",
+              "IL",
+              "IT",
+              "JM",
+              "JP",
+              "JE",
+              "JO",
+              "KZ",
+              "KE",
+              "KI",
+              "KP",
+              "KR",
+              "KW",
+              "KG",
+              "LA",
+              "LV",
+              "LB",
+              "LS",
+              "LR",
+              "LY",
+              "LI",
+              "LT",
+              "LU",
+              "MO",
+              "MK",
+              "MG",
+              "MW",
+              "MY",
+              "MV",
+              "ML",
+              "MT",
+              "MH",
+              "MQ",
+              "MR",
+              "MU",
+              "YT",
+              "MX",
+              "FM",
+              "MD",
+              "MC",
+              "MN",
+              "ME",
+              "MS",
+              "MA",
+              "MZ",
+              "MM",
+              "NA",
+              "NR",
+              "NP",
+              "NL",
+              "NC",
+              "NZ",
+              "NI",
+              "NE",
+              "NG",
+              "NU",
+              "NF",
+              "MP",
+              "NO",
+              "OM",
+              "PK",
+              "PW",
+              "PS",
+              "PA",
+              "PG",
+              "PY",
+              "PE",
+              "PH",
+              "PN",
+              "PL",
+              "PT",
+              "PR",
+              "QA",
+              "RE",
+              "RO",
+              "RU",
+              "RW",
+              "BL",
+              "SH",
+              "KN",
+              "LC",
+              "MF",
+              "PM",
+              "VC",
+              "WS",
+              "SM",
+              "ST",
+              "SA",
+              "SN",
+              "RS",
+              "SC",
+              "SL",
+              "SG",
+              "SX",
+              "SK",
+              "SI",
+              "SB",
+              "SO",
+              "ZA",
+              "GS",
+              "SS",
+              "ES",
+              "LK",
+              "SD",
+              "SR",
+              "SJ",
+              "SZ",
+              "SE",
+              "CH",
+              "SY",
+              "TW",
+              "TJ",
+              "TZ",
+              "TH",
+              "TL",
+              "TG",
+              "TK",
+              "TO",
+              "TT",
+              "TN",
+              "TR",
+              "TM",
+              "TC",
+              "TV",
+              "UG",
+              "UA",
+              "AE",
+              "GB",
+              "US",
+              "UM",
+              "UY",
+              "UZ",
+              "VU",
+              "VE",
+              "VN",
+              "VG",
+              "VI",
+              "WF",
+              "EH",
+              "YE",
+              "ZM",
+              "ZW",
+              "AA",
+              "XK",
+              "XZ",
+              "ZZ"
+            ],
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/countryCode"
+            }
+          },
+          "recordedByIDs": {
+            "type": "array",
+            "description": "A list of the globally unique identifiers for the person, people, groups, or organizations responsible for recording the original Occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/recordedByID"
+            },
+            "items": {
+              "$ref": "#/components/schemas/AgentIdentifier"
+            }
+          },
+          "identifiedByIDs": {
+            "type": "array",
+            "description": "A list of the globally unique identifiers for the person, people, groups, or organizations responsible for assigning the Taxon to the occurrence.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/identifiedByID"
+            },
+            "items": {
+              "$ref": "#/components/schemas/AgentIdentifier"
+            }
+          },
+          "gbifRegion": {
+            "type": "string",
+            "description": "An enumeration for all GBIF Regions. These are based on [IPBES regions](https://www.nature.com/articles/sdata20167/figures/1).\n\n*This is a political division,* part of GBIF's governance structure.",
+            "enum": [
+              "AFRICA",
+              "ASIA",
+              "EUROPE",
+              "NORTH_AMERICA",
+              "OCEANIA",
+              "LATIN_AMERICA",
+              "ANTARCTICA"
+            ]
+          },
+          "country": {
+            "type": "string",
+            "description": "The title (as per ISO-3166-1) of the country, territory or area in which the occurrence was recorded.",
+            "externalDocs": {
+              "description": "Darwin Core definition",
+              "url": "https://rs.tdwg.org/dwc/terms/country"
+            }
+          },
+          "publishedByGbifRegion": {
+            "type": "string",
+            "description": "An enumeration for all GBIF Regions. These are based on [IPBES regions](https://www.nature.com/articles/sdata20167/figures/1).\n\n*This is a political division,* part of GBIF's governance structure.",
+            "enum": [
+              "AFRICA",
+              "ASIA",
+              "EUROPE",
+              "NORTH_AMERICA",
+              "OCEANIA",
+              "LATIN_AMERICA",
+              "ANTARCTICA"
+            ]
+          }
+        },
+        "required": [
+          "datasetKey",
+          "extensions",
+          "facts",
+          "gadm",
+          "identifiedByIDs",
+          "identifiers",
+          "issues",
+          "key",
+          "license",
+          "media",
+          "protocol",
+          "publishingOrgKey",
+          "recordedByIDs",
+          "relations"
+        ]
+      },
+      "OccurrenceRelation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurrenceId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "relatedOccurrenceId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "type": {
+            "type": "string"
+          },
+          "accordingTo": {
+            "type": "string"
+          },
+          "establishedDate": {
+            "type": "string"
+          },
+          "remarks": {
+            "type": "string"
+          }
+        }
+      },
+      "RankedName": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "authorship": {
+            "type": "string"
+          }
+        }
+      },
+      "SearchResponseOccurrenceOccurrenceSearchParameter": {
+        "type": "object",
+        "properties": {
+          "endOfRecords": {
+            "type": "boolean",
+            "description": "True if this page of search results is the final page."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The total number of records returned by the search."
+          },
+          "results": {
+            "type": "array",
+            "description": "Search results.",
+            "items": {
+              "$ref": "#/components/schemas/Occurrence"
+            }
+          },
+          "facets": {
+            "type": "array",
+            "description": "The resulting facets of a search operation.  The list can be empty if no facets were requested.\n\nIf there are no values for a facet, it will not be included in the list, i.e.: a facet should have at least 1 occurrence.",
+            "items": {
+              "$ref": "#/components/schemas/FacetOccurrenceSearchParameter"
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "authorship": {
+            "type": "string"
+          },
+          "genericName": {
+            "type": "string"
+          },
+          "infragenericEpithet": {
+            "type": "string"
+          },
+          "specificEpithet": {
+            "type": "string"
+          },
+          "infraspecificEpithet": {
+            "type": "string"
+          },
+          "formattedName": {
+            "type": "string"
+          }
+        }
+      },
+      "Range": {},
+      "MediaType": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "subtype": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "qualityValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "subtypeSuffix": {
+            "type": "string"
+          },
+          "wildcardType": {
+            "type": "boolean"
+          },
+          "wildcardSubtype": {
+            "type": "boolean"
+          },
+          "concrete": {
+            "type": "boolean"
+          },
+          "charset": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

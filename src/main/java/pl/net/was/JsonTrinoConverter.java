@@ -54,11 +54,13 @@ import io.trino.spi.type.VarcharType;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.time.temporal.TemporalAccessor;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -76,22 +78,21 @@ import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 
-public class JsonTrinoConverter
-{
-    // adaptive fraction-of-second (0-9 digits, no trailing zeros) instead of stacking optional [.SSS][.SSSSSS][.SSSSSSSSS]
-    // sections, which all get printed at once since NANO_OF_SECOND is always supported by ZonedDateTime
+public class JsonTrinoConverter {
+    // adaptive fraction-of-second (0-9 digits, no trailing zeros) instead of
+    // stacking optional [.SSS][.SSSSSS][.SSSSSSSSS]
+    // sections, which all get printed at once since NANO_OF_SECOND is always
+    // supported by ZonedDateTime
     private static final DateTimeFormatter ISO_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
             .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
             .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
             .appendPattern("XXX")
             .toFormatter();
 
-    private JsonTrinoConverter()
-    {
+    private JsonTrinoConverter() {
     }
 
-    public static Object convert(JsonNode jsonNode, Type type, Schema<?> schemaType)
-    {
+    public static Object convert(JsonNode jsonNode, Type type, Schema<?> schemaType) {
         if (jsonNode == null || jsonNode instanceof NullNode) {
             return null;
         }
@@ -109,9 +110,9 @@ public class JsonTrinoConverter
         }
         if (type instanceof DecimalType decimalType) {
             double value = jsonNode.doubleValue();
-            return decimalType.isShort() ?
-                    doubleToShortDecimal(value, decimalType.getPrecision(), decimalType.getScale()) :
-                    doubleToLongDecimal(value, decimalType.getPrecision(), decimalType.getScale());
+            return decimalType.isShort()
+                    ? doubleToShortDecimal(value, decimalType.getPrecision(), decimalType.getScale())
+                    : doubleToLongDecimal(value, decimalType.getPrecision(), decimalType.getScale());
         }
         if (type instanceof VarcharType) {
             if (jsonNode.isValueNode()) {
@@ -121,9 +122,9 @@ public class JsonTrinoConverter
             ObjectMapper objectMapper = new ObjectMapper();
             try {
                 return objectMapper.writeValueAsString(jsonNode);
-            }
-            catch (JsonProcessingException e) {
-                throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Failed to serialize node to string: %s", jsonNode));
+            } catch (JsonProcessingException e) {
+                throw new TrinoException(GENERIC_INTERNAL_ERROR,
+                        format("Failed to serialize node to string: %s", jsonNode));
             }
         }
         if (type instanceof DateType) {
@@ -139,13 +140,18 @@ public class JsonTrinoConverter
             DateTimeFormatter dateFormatter;
             if (format.equals("date-time")) {
                 dateFormatter = DateTimeFormatter.ISO_DATE_TIME;
-            }
-            else {
+            } else {
                 dateFormatter = DateTimeFormatter.ofPattern(format);
             }
 
-            Instant instant = dateFormatter.parse(jsonNode.asText(), Instant::from);
-            long epochMicros = instant.getEpochSecond() * MICROSECONDS_PER_SECOND + instant.getNano() / NANOSECONDS_PER_MICROSECOND;
+            TemporalAccessor parsed = dateFormatter.parse(jsonNode.asText());
+            // some APIs (e.g. GBIF) return date-time values without a zone/offset, which
+            // can't be resolved to an Instant directly
+            Instant instant = parsed.isSupported(ChronoField.INSTANT_SECONDS)
+                    ? Instant.from(parsed)
+                    : LocalDateTime.from(parsed).toInstant(ZoneOffset.UTC);
+            long epochMicros = instant.getEpochSecond() * MICROSECONDS_PER_SECOND
+                    + instant.getNano() / NANOSECONDS_PER_MICROSECOND;
             return Timestamps.round(epochMicros, 6 - timestampType.getPrecision());
         }
         if (type instanceof BooleanType) {
@@ -168,8 +174,7 @@ public class JsonTrinoConverter
         throw new RuntimeException(format("Unsupported type %s", type.getClass().getCanonicalName()));
     }
 
-    private static Block buildArray(ArrayNode jsonArray, ArrayType arrayType, Schema<?> schemaType)
-    {
+    private static Block buildArray(ArrayNode jsonArray, ArrayType arrayType, Schema<?> schemaType) {
         PageBuilder pageBuilder = new PageBuilder(ImmutableList.of(arrayType));
 
         ArrayBlockBuilder blockBuilder = (ArrayBlockBuilder) pageBuilder.getBlockBuilder(0);
@@ -177,8 +182,7 @@ public class JsonTrinoConverter
             for (JsonNode listObject : jsonArray) {
                 if (arrayType.getElementType() instanceof RowType rowType) {
                     writeRow(elementBuilder, listObject, rowType, schemaType.getItems());
-                }
-                else {
+                } else {
                     Object value = convert(listObject, arrayType.getElementType(), schemaType.getItems());
                     writeTo(elementBuilder, value, arrayType.getElementType());
                 }
@@ -190,13 +194,13 @@ public class JsonTrinoConverter
         return arrayType.getObject(block, block.getPositionCount() - 1);
     }
 
-    private static SqlMap buildMap(JsonNode node, MapType mapType, Schema<?> schemaType)
-    {
+    private static SqlMap buildMap(JsonNode node, MapType mapType, Schema<?> schemaType) {
         MapBlockBuilder blockBuilder = mapType.createBlockBuilder(null, node.size());
         blockBuilder.buildEntry((keyBuilder, valueBuilder) -> {
             node.fields().forEachRemaining(entry -> {
                 VARCHAR.writeString(keyBuilder, entry.getKey());
-                Object value = convert(entry.getValue(), mapType.getValueType(), (Schema<?>) schemaType.getAdditionalProperties());
+                Object value = convert(entry.getValue(), mapType.getValueType(),
+                        (Schema<?>) schemaType.getAdditionalProperties());
                 writeTo(valueBuilder, value, mapType.getValueType());
             });
         });
@@ -204,8 +208,7 @@ public class JsonTrinoConverter
         return mapType.getObject(block, 0);
     }
 
-    private static void writeRow(BlockBuilder blockBuilder, JsonNode node, RowType rowType, Schema<?> schemaType)
-    {
+    private static void writeRow(BlockBuilder blockBuilder, JsonNode node, RowType rowType, Schema<?> schemaType) {
         if (node == null) {
             blockBuilder.appendNull();
             return;
@@ -224,8 +227,7 @@ public class JsonTrinoConverter
         });
     }
 
-    private static void writeTo(BlockBuilder rowBuilder, Object value, Type type)
-    {
+    private static void writeTo(BlockBuilder rowBuilder, Object value, Type type) {
         if (value == null) {
             rowBuilder.appendNull();
             return;
@@ -257,8 +259,7 @@ public class JsonTrinoConverter
         if (type instanceof DecimalType decimalType) {
             if (decimalType.isShort()) {
                 decimalType.writeLong(rowBuilder, (Long) value);
-            }
-            else {
+            } else {
                 decimalType.writeObject(rowBuilder, value);
             }
             return;
@@ -266,8 +267,7 @@ public class JsonTrinoConverter
         if (type instanceof TimestampType timestampType) {
             if (timestampType.isShort()) {
                 timestampType.writeLong(rowBuilder, (Long) value);
-            }
-            else {
+            } else {
                 timestampType.writeLong(rowBuilder, packTimestamp((ZonedDateTime) value));
             }
             return;
@@ -291,25 +291,28 @@ public class JsonTrinoConverter
         throw new RuntimeException(format("Unsupported array element type %s", type.getClass().getCanonicalName()));
     }
 
-    private static long packTimestamp(ZonedDateTime timestamp)
-    {
+    private static long packTimestamp(ZonedDateTime timestamp) {
         if (timestamp == null) {
             return 0;
         }
         return DateTimeEncoding.packDateTimeWithZone(
-                timestamp.toEpochSecond() * MILLISECONDS_PER_SECOND + roundDiv(timestamp.toLocalTime().getNano(), NANOSECONDS_PER_MILLISECOND),
+                timestamp.toEpochSecond() * MILLISECONDS_PER_SECOND
+                        + roundDiv(timestamp.toLocalTime().getNano(), NANOSECONDS_PER_MILLISECOND),
                 timestamp.getZone().getId());
     }
 
     /**
-     * Formats a Trino TIMESTAMP value back into a string, using the column's Trino type (not just the OpenAPI
-     * schema) to correctly interpret the raw encoded value: Trino encodes short TIMESTAMP values (precision 0-6,
-     * which is all that this connector currently produces) as microseconds since the epoch, not milliseconds.
+     * Formats a Trino TIMESTAMP value back into a string, using the column's Trino
+     * type (not just the OpenAPI
+     * schema) to correctly interpret the raw encoded value: Trino encodes short
+     * TIMESTAMP values (precision 0-6,
+     * which is all that this connector currently produces) as microseconds since
+     * the epoch, not milliseconds.
      */
-    static String formatTimestamp(long value, TimestampType type, Schema<?> schemaType)
-    {
+    static String formatTimestamp(long value, TimestampType type, Schema<?> schemaType) {
         if (!type.isShort()) {
-            throw new TrinoException(GENERIC_INTERNAL_ERROR, format("Unsupported timestamp precision %d", type.getPrecision()));
+            throw new TrinoException(GENERIC_INTERNAL_ERROR,
+                    format("Unsupported timestamp precision %d", type.getPrecision()));
         }
         Instant instant = Instant.ofEpochSecond(
                 Math.floorDiv(value, MICROSECONDS_PER_SECOND),
@@ -321,8 +324,8 @@ public class JsonTrinoConverter
         return dateFormatter.format(instant.atZone(ZoneOffset.UTC));
     }
 
-    public static Object convert(Block block, int position, Type type, Schema<?> schemaType, ObjectMapper objectMapper)
-    {
+    public static Object convert(Block block, int position, Type type, Schema<?> schemaType,
+            ObjectMapper objectMapper) {
         if (block.isNull(position)) {
             return null;
         }
@@ -335,7 +338,8 @@ public class JsonTrinoConverter
         if (type instanceof BooleanType) {
             return type.getBoolean(block, position);
         }
-        if (type instanceof TinyintType || type instanceof SmallintType || type instanceof IntegerType || type instanceof BigintType) {
+        if (type instanceof TinyintType || type instanceof SmallintType || type instanceof IntegerType
+                || type instanceof BigintType) {
             return type.getLong(block, position);
         }
         if (type instanceof DoubleType || type instanceof RealType) {
@@ -354,7 +358,8 @@ public class JsonTrinoConverter
         if (type instanceof ArrayType arrayType) {
             if (block instanceof ArrayBlock arrayBlock) {
                 Schema<?> finalSchemaType = schemaType;
-                return arrayBlock.apply((valuesBlock, start, length) -> convertArray(valuesBlock, start, length, arrayType, finalSchemaType, objectMapper), position);
+                return arrayBlock.apply((valuesBlock, start, length) -> convertArray(valuesBlock, start, length,
+                        arrayType, finalSchemaType, objectMapper), position);
             }
             return convertArray(block, 0, block.getPositionCount(), arrayType, schemaType, objectMapper);
         }
@@ -371,99 +376,86 @@ public class JsonTrinoConverter
             convertRow(rowNode, rowBlock, rowType, schemaType, objectMapper);
             return rowNode;
         }
-        throw new RuntimeException(format("Unsupported type %s (%s)", type.getDisplayName(), type.getClass().getCanonicalName()));
+        throw new RuntimeException(
+                format("Unsupported type %s (%s)", type.getDisplayName(), type.getClass().getCanonicalName()));
     }
 
-    private static ArrayNode convertArray(Block arrayBlock, int start, int length, ArrayType arrayType, Schema<?> schemaType, ObjectMapper objectMapper)
-    {
+    private static ArrayNode convertArray(Block arrayBlock, int start, int length, ArrayType arrayType,
+            Schema<?> schemaType, ObjectMapper objectMapper) {
         ArrayNode arrayNode = objectMapper.createArrayNode();
         for (int i = 0; i < length; i++) {
-            Object itemValue = convert(arrayBlock, i + start, arrayType.getElementType(), schemaType.getItems(), objectMapper);
+            Object itemValue = convert(arrayBlock, i + start, arrayType.getElementType(), schemaType.getItems(),
+                    objectMapper);
             if (itemValue == null) {
                 arrayNode.addNull();
-            }
-            else if (itemValue instanceof Boolean booleanValue) {
+            } else if (itemValue instanceof Boolean booleanValue) {
                 arrayNode.add(booleanValue);
-            }
-            else if (itemValue instanceof Long longValue) {
+            } else if (itemValue instanceof Long longValue) {
                 arrayNode.add(longValue);
-            }
-            else if (itemValue instanceof Double doubleValue) {
+            } else if (itemValue instanceof Double doubleValue) {
                 arrayNode.add(doubleValue);
-            }
-            else if (itemValue instanceof String stringValue) {
+            } else if (itemValue instanceof String stringValue) {
                 arrayNode.add(stringValue);
-            }
-            else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
+            } else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
                 arrayNode.add((JsonNode) itemValue);
-            }
-            else if (itemValue instanceof RawValue rawValue) {
+            } else if (itemValue instanceof RawValue rawValue) {
                 arrayNode.addRawValue(rawValue);
-            }
-            else {
+            } else {
                 throw new RuntimeException(format("Unsupported object of class %s", itemValue.getClass()));
             }
         }
         return arrayNode;
     }
 
-    private static ObjectNode convertMap(SqlMap mapBlock, MapType mapType, Schema<?> schemaType, ObjectMapper objectMapper)
-    {
+    private static ObjectNode convertMap(SqlMap mapBlock, MapType mapType, Schema<?> schemaType,
+            ObjectMapper objectMapper) {
         ObjectNode mapNode = objectMapper.createObjectNode();
         for (int i = 0; i < mapBlock.getSize(); i++) {
-            // TODO passing schemaType.getItems() to both key and value is probably incorrect
-            String key = convert(mapBlock.getRawKeyBlock(), mapBlock.getRawOffset() + i, mapType.getKeyType(), schemaType.getItems(), objectMapper).toString();
-            Object itemValue = convert(mapBlock.getRawValueBlock(), mapBlock.getRawOffset() + i, mapType.getValueType(), schemaType.getItems(), objectMapper);
+            // TODO passing schemaType.getItems() to both key and value is probably
+            // incorrect
+            String key = convert(mapBlock.getRawKeyBlock(), mapBlock.getRawOffset() + i, mapType.getKeyType(),
+                    schemaType.getItems(), objectMapper).toString();
+            Object itemValue = convert(mapBlock.getRawValueBlock(), mapBlock.getRawOffset() + i, mapType.getValueType(),
+                    schemaType.getItems(), objectMapper);
             if (itemValue == null) {
                 mapNode.putNull(key);
-            }
-            else if (itemValue instanceof Boolean booleanValue) {
+            } else if (itemValue instanceof Boolean booleanValue) {
                 mapNode.put(key, booleanValue);
-            }
-            else if (itemValue instanceof Long longValue) {
+            } else if (itemValue instanceof Long longValue) {
                 mapNode.put(key, longValue);
-            }
-            else if (itemValue instanceof Double doubleValue) {
+            } else if (itemValue instanceof Double doubleValue) {
                 mapNode.put(key, doubleValue);
-            }
-            else if (itemValue instanceof String stringValue) {
+            } else if (itemValue instanceof String stringValue) {
                 mapNode.put(key, stringValue);
-            }
-            else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
+            } else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
                 mapNode.set(key, (JsonNode) itemValue);
-            }
-            else {
+            } else {
                 throw new RuntimeException(format("Unsupported object of class %s", itemValue.getClass()));
             }
         }
         return mapNode;
     }
 
-    public static void convertRow(ObjectNode rowNode, SqlRow row, RowType rowType, Schema<?> schemaType, ObjectMapper objectMapper)
-    {
+    public static void convertRow(ObjectNode rowNode, SqlRow row, RowType rowType, Schema<?> schemaType,
+            ObjectMapper objectMapper) {
         for (int i = 0; i < row.getFieldCount(); i++) {
             RowType.Field field = rowType.getFields().get(i);
             String key = field.getName().orElse(format("_col%d", i));
-            Object value = convert(row.getRawFieldBlock(i), row.getRawIndex(), field.getType(), schemaType.getProperties().get(key), objectMapper);
+            Object value = convert(row.getRawFieldBlock(i), row.getRawIndex(), field.getType(),
+                    schemaType.getProperties().get(key), objectMapper);
             if (value == null) {
                 rowNode.putNull(key);
-            }
-            else if (value instanceof Boolean booleanValue) {
+            } else if (value instanceof Boolean booleanValue) {
                 rowNode.put(key, booleanValue);
-            }
-            else if (value instanceof Long longValue) {
+            } else if (value instanceof Long longValue) {
                 rowNode.put(key, longValue);
-            }
-            else if (value instanceof Double doubleValue) {
+            } else if (value instanceof Double doubleValue) {
                 rowNode.put(key, doubleValue);
-            }
-            else if (value instanceof String stringValue) {
+            } else if (value instanceof String stringValue) {
                 rowNode.put(key, stringValue);
-            }
-            else if (value instanceof ArrayNode || value instanceof ObjectNode) {
+            } else if (value instanceof ArrayNode || value instanceof ObjectNode) {
                 rowNode.set(key, (JsonNode) value);
-            }
-            else {
+            } else {
                 throw new RuntimeException(format("Unsupported object of class %s", value.getClass()));
             }
         }

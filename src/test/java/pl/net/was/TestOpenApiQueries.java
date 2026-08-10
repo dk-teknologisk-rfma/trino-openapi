@@ -23,6 +23,7 @@ import io.trino.testing.sql.TrinoSqlExecutor;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -71,12 +72,19 @@ public class TestOpenApiQueries
                                 "base-uri", fastApiServer.getApiUrl()));
 
                 return OpenApiQueryRunner.createQueryRunner(Map.of(
-                                "openmeteo",
-                                Map.of("spec-location",
-                                                "https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml",
-                                                "base-uri", "https://api.open-meteo.com"),
+                                // openmeteo catalog disabled: its spec-location fetches
+                                // https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml, which is unreachable here
+                                // "openmeteo",
+                                // Map.of("spec-location",
+                                // "https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml",
+                                // "base-uri", "https://api.open-meteo.com"),
                                 "petstore", petStoreProperties.buildOrThrow(),
-                                "fastapi", fastApiProperties.buildOrThrow()));
+                                "fastapi", fastApiProperties.buildOrThrow(),
+                                "gbif",
+                                Map.of("spec-location",
+                                                "file://" + new File("src/test/resources/occurrence.json")
+                                                                .getAbsolutePath(),
+                                                "base-uri", "https://api.gbif.org/v1")));
         }
 
         @Test
@@ -109,17 +117,18 @@ public class TestOpenApiQueries
                 assertQueryReturnsEmptyResult("SELECT name FROM petstore.default.pet WHERE pet_id = 100");
         }
 
-        @Test
-        public void selectFromForecastTable() {
-                assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
-                                +
-                                "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688",
-                                "VALUES (135.0, 'GMT', null)");
-                assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
-                                +
-                                "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688 AND current_weather_req = true",
-                                "VALUES (135.0, 'GMT', true)");
-        }
+        // disabled along with the openmeteo catalog above (unreachable spec-location)
+        // @Test
+        // public void selectFromForecastTable() {
+        // assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
+        // +
+        // "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688",
+        // "VALUES (135.0, 'GMT', null)");
+        // assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
+        // +
+        // "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688 AND current_weather_req = true",
+        // "VALUES (135.0, 'GMT', true)");
+        // }
 
         @Test
         public void selectItems() {
@@ -215,6 +224,36 @@ public class TestOpenApiQueries
         public void errors() {
                 assertQueryFails("SELECT * FROM fastapi.default.error",
                                 "Server responded with error 418: \"Oops! Inevitable error happened. There goes a rainbow...\"");
+        }
+
+        @Test
+        public void showGbifTables() {
+                assertQuery("SHOW SCHEMAS FROM gbif",
+                                "VALUES 'default', 'information_schema'");
+                assertQuery("SELECT column_name FROM gbif.information_schema.columns " +
+                                "WHERE table_schema = 'default' AND table_name = 'occurrence_search' " +
+                                "AND column_name IN ('count', 'end_of_records', 'has_coordinate', 'has_geospatial_issue', 'results')",
+                                "VALUES ('count'), ('end_of_records'), ('has_coordinate'), ('has_geospatial_issue'), ('results')");
+        }
+
+        @Test
+        public void selectFromOccurrenceSearch() {
+                // regression test for OpenAPI 3.1 support:
+                // count/end_of_records/has_coordinate/has_geospatial_issue
+                // used to be resolved as varchar instead of bigint/boolean, and results as
+                // array(varchar) instead of
+                // array(row(...)), because the GBIF spec declares "openapi": "3.1.0"
+                List<MaterializedRow> rows = getQueryRunner().execute(
+                                "SELECT count, end_of_records, has_coordinate, cardinality(results) > 0 AS has_results "
+                                                +
+                                                "FROM gbif.default.occurrence_search WHERE has_coordinate = true LIMIT 1")
+                                .getMaterializedRows();
+                assertThat(rows).size().isEqualTo(1);
+                MaterializedRow row = rows.getFirst();
+                assertThat(row.getField(0)).isInstanceOf(Long.class);
+                assertThat(row.getField(1)).isInstanceOf(Boolean.class);
+                assertThat(row.getField(2)).isEqualTo(true);
+                assertThat(row.getField(3)).isEqualTo(true);
         }
 
         private TestTable generateDataset(String namePrefix, int elements) {
