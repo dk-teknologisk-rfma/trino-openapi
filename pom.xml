@@ -10,7 +10,7 @@
 
     <groupId>pl.net.was</groupId>
     <artifactId>trino-openapi</artifactId>
-    <version>1.88-483</version>
+    <version>1.89-483</version>
     <packaging>trino-plugin</packaging>
 
     <name>${project.artifactId}</name>
@@ -249,13 +249,6 @@
             <groupId>com.github.docker-java</groupId>
             <artifactId>docker-java-api</artifactId>
             <version>3.7.1</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>io.airlift</groupId>
-            <artifactId>log-manager</artifactId>
-            <version>${dep.airlift.version}</version>
             <scope>test</scope>
         </dependency>
 
