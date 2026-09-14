@@ -32,233 +32,219 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestOpenApiQueries
-                extends AbstractTestQueryFramework {
-        KeycloakServer keycloakServer;
-        PetStoreServer petStoreServer;
-        FastApiServer fastApiServer;
+        extends AbstractTestQueryFramework
+{
+    KeycloakServer keycloakServer;
+    PetStoreServer petStoreServer;
+    FastApiServer fastApiServer;
 
-        @AfterAll
-        void tearDown() {
-                fastApiServer.close();
-                petStoreServer.close();
-                keycloakServer.close();
+    @AfterAll
+    void tearDown()
+    {
+        fastApiServer.close();
+        petStoreServer.close();
+        keycloakServer.close();
+    }
+
+    @Override
+    protected QueryRunner createQueryRunner()
+            throws Exception
+    {
+        // this method is called from a @BeforeAll method in the super class
+        keycloakServer = new KeycloakServer();
+        petStoreServer = new PetStoreServer(keycloakServer);
+        fastApiServer = new FastApiServer();
+
+        ImmutableMap.Builder<String, String> petStoreProperties = ImmutableMap.builder();
+        petStoreProperties.putAll(Map.of(
+                "spec-location", petStoreServer.getSpecUrl(),
+                "base-uri", petStoreServer.getApiUrl(),
+                "authentication.type", "oauth",
+                "authentication.scheme", "basic",
+                "authentication.username", "user",
+                "authentication.password", "user",
+                "authentication.api-key-name", "api_key",
+                "authentication.api-key-value", "special-key"));
+        petStoreProperties.putAll(Map.of(
+                "authentication.client-id", "sample-client-id",
+                "authentication.client-secret", "secret"));
+
+        ImmutableMap.Builder<String, String> fastApiProperties = ImmutableMap.builder();
+        fastApiProperties.putAll(Map.of(
+                "spec-location", fastApiServer.getSpecUrl(),
+                "base-uri", fastApiServer.getApiUrl()));
+
+        return OpenApiQueryRunner.createQueryRunner(Map.of(
+                // openmeteo catalog disabled: its spec-location fetches
+                // https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml, which is unreachable here
+                // "openmeteo", Map.of(
+                //         "spec-location", "src/test/resources/openmeteo.yml",
+                //         "base-uri", "https://api.open-meteo.com"),
+                "petstore", petStoreProperties.buildOrThrow(),
+                "fastapi", fastApiProperties.buildOrThrow(),
+                "gbif", Map.of(
+                        "spec-location", "file://" + new File("src/test/resources/occurrence.json").getAbsolutePath(),
+                        "base-uri", "https://api.gbif.org/v1")));
+    }
+
+    @Test
+    public void showPetStoreTables()
+    {
+        assertQuery(
+                "SHOW SCHEMAS FROM petstore",
+                "VALUES 'default', 'information_schema'");
+        assertQuery(
+                "SHOW TABLES FROM petstore.default",
+                "VALUES 'pet_find_by_status', 'pet_find_by_tags', 'store_inventory', 'store_order', 'pet', 'user', 'user_create_with_list', 'user_login', 'pet_upload_image'");
+    }
+
+    @Test
+    public void selectFromPetTable()
+    {
+        assertQuery(
+                "SELECT name FROM petstore.default.pet_find_by_status WHERE status = 'available' AND id != 100",
+                "VALUES ('Cat 1'), ('Cat 2'), ('Dog 1'), ('Lion 1'), ('Lion 2'), ('Lion 3'), ('Rabbit 1')");
+        assertQuery(
+                "SELECT name FROM petstore.default.pet WHERE pet_id = 1",
+                "VALUES ('Cat 1')");
+    }
+
+    @Test
+    public void insertPet()
+    {
+        assertQueryReturnsEmptyResult("SELECT name FROM petstore.default.pet WHERE pet_id = 100");
+        assertQuerySucceeds("INSERT INTO petstore.default.pet (id, name, photo_urls, status) VALUES (100, 'Cat X', ARRAY[], 'available')");
+        assertQuery(
+                "SELECT name FROM petstore.default.pet WHERE pet_id = 100",
+                "VALUES ('Cat X')");
+        assertUpdate("UPDATE petstore.default.pet SET name = 'Cat Y' WHERE pet_id = 100", 1);
+        assertQuery(
+                "SELECT name FROM petstore.default.pet WHERE pet_id = 100",
+                "VALUES ('Cat Y')");
+        assertUpdate("DELETE FROM petstore.default.pet WHERE pet_id = 100", 1);
+        assertQueryReturnsEmptyResult("SELECT name FROM petstore.default.pet WHERE pet_id = 100");
+    }
+
+    // disabled along with the openmeteo catalog above (unreachable spec-location)
+    // @Test
+    // public void selectFromForecastTable()
+    // {
+    //     assertQuery(
+    //             "SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable " +
+    //                     "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688",
+    //             "VALUES (135.0, 'GMT', null)");
+    //     assertQuery(
+    //             "SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable " +
+    //                     "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688 AND current_weather_req = true",
+    //             "VALUES (135.0, 'GMT', true)");
+    // }
+
+    @Test
+    public void selectItems()
+    {
+        List<MaterializedRow> rows = getQueryRunner().execute("SELECT name, description, price, tax, tags, map_entries(properties), created_at, valid_until, revised_at FROM fastapi.default.items WHERE item_id = 1").getMaterializedRows();
+        // can't use assertQuery, because array of dates read from H2 as not using LocalDate
+        assertThat(rows).size().isEqualTo(1);
+        assertThat(rows.getFirst().getFields()).containsExactly(
+                "Portal Gun",
+                null,
+                BigDecimal.valueOf(4200000000L, 8),
+                null,
+                List.of("sci-fi"),
+                List.of(),
+                null,
+                null,
+                List.of(LocalDate.of(2007, 10, 10), LocalDate.of(2022, 12, 8)));
+    }
+
+    @Test
+    public void searchItemsWithInPhrase()
+    {
+        List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (ARRAY['2'])").getMaterializedRows();
+        assertThat(rows).size().isEqualTo(1);
+        assertThat(rows.getFirst().getFields()).first().isEqualTo("Plumbus");
+
+        rows = getQueryRunner().execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (ARRAY['1', '2'])").getMaterializedRows();
+        assertThat(rows).size().isEqualTo(2);
+    }
+
+    @Test
+    public void searchItemsWithSubQuery10k()
+    {
+        try (TestTable table = generateDataset("memory.default.test_items_10k", 10000)) {
+            List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (select array_agg(item_id) from %s)".formatted(table.getName())).getMaterializedRows();
+            assertThat(rows)
+                    .extracting(row -> row.getFields().getFirst())
+                    .containsExactly("Portal Gun", "Plumbus");
         }
+    }
 
-        @Override
-        protected QueryRunner createQueryRunner()
-                        throws Exception {
-                // this method is called from a @BeforeAll method in the super class
-                keycloakServer = new KeycloakServer();
-                petStoreServer = new PetStoreServer(keycloakServer);
-                fastApiServer = new FastApiServer();
-
-                ImmutableMap.Builder<String, String> petStoreProperties = ImmutableMap.builder();
-                petStoreProperties.putAll(Map.of(
-                                "spec-location", petStoreServer.getSpecUrl(),
-                                "base-uri", petStoreServer.getApiUrl(),
-                                "authentication.type", "oauth",
-                                "authentication.scheme", "basic",
-                                "authentication.username", "user",
-                                "authentication.password", "user",
-                                "authentication.api-key-name", "api_key",
-                                "authentication.api-key-value", "special-key"));
-                petStoreProperties.putAll(Map.of(
-                                "authentication.client-id", "sample-client-id",
-                                "authentication.client-secret", "secret"));
-
-                ImmutableMap.Builder<String, String> fastApiProperties = ImmutableMap.builder();
-                fastApiProperties.putAll(Map.of(
-                                "spec-location", fastApiServer.getSpecUrl(),
-                                "base-uri", fastApiServer.getApiUrl()));
-
-                return OpenApiQueryRunner.createQueryRunner(Map.of(
-                                // openmeteo catalog disabled: its spec-location fetches
-                                // https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml, which is unreachable here
-                                // "openmeteo",
-                                // Map.of("spec-location",
-                                // "https://raw.githubusercontent.com/open-meteo/open-meteo/main/openapi.yml",
-                                // "base-uri", "https://api.open-meteo.com"),
-                                "petstore", petStoreProperties.buildOrThrow(),
-                                "fastapi", fastApiProperties.buildOrThrow(),
-                                "gbif",
-                                Map.of("spec-location",
-                                                "file://" + new File("src/test/resources/occurrence.json")
-                                                                .getAbsolutePath(),
-                                                "base-uri", "https://api.gbif.org/v1")));
+    @Test
+    public void searchItemsWithSubQuery100k()
+    {
+        try (TestTable table = generateDataset("memory.default.test_items_100k", 100000)) {
+            List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (select array_agg(item_id) from %s)".formatted(table.getName())).getMaterializedRows();
+            assertThat(rows)
+                    .extracting(row -> row.getFields().getFirst())
+                    .containsExactly("Portal Gun", "Plumbus");
         }
+    }
 
-        @Test
-        public void showPetStoreTables() {
-                assertQuery("SHOW SCHEMAS FROM petstore",
-                                "VALUES 'default', 'information_schema'");
-                assertQuery("SHOW TABLES FROM petstore.default",
-                                "VALUES 'pet_find_by_status', 'pet_find_by_tags', 'store_inventory', 'store_order', 'pet', 'user', 'user_create_with_list', 'user_login', 'pet_upload_image'");
-        }
+    @Test
+    public void itemCategories()
+    {
+        List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.item_categories").getMaterializedRows();
+        assertThat(rows).size().isEqualTo(1);
+        assertThat(rows.getFirst().getFields()).first().isEqualTo("main");
+    }
 
-        @Test
-        public void selectFromPetTable() {
-                assertQuery("SELECT name FROM petstore.default.pet_find_by_status WHERE status = 'available' AND id != 100",
-                                "VALUES ('Cat 1'), ('Cat 2'), ('Dog 1'), ('Lion 1'), ('Lion 2'), ('Lion 3'), ('Rabbit 1')");
-                assertQuery("SELECT name FROM petstore.default.pet WHERE pet_id = 1",
-                                "VALUES ('Cat 1')");
-        }
+    @Test
+    public void items()
+    {
+        List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.items").getMaterializedRows();
+        assertThat(rows)
+                .extracting(row -> row.getFields().getFirst())
+                .containsExactly("Portal Gun", "Plumbus");
+    }
 
-        @Test
-        public void insertPet() {
-                assertQueryReturnsEmptyResult("SELECT name FROM petstore.default.pet WHERE pet_id = 100");
-                assertQuerySucceeds(
-                                "INSERT INTO petstore.default.pet (id, name, photo_urls, status) VALUES (100, 'Cat X', ARRAY[], 'available')");
-                assertQuery("SELECT name FROM petstore.default.pet WHERE pet_id = 100",
-                                "VALUES ('Cat X')");
-                assertUpdate("UPDATE petstore.default.pet SET name = 'Cat Y' WHERE pet_id = 100", 1);
-                assertQuery("SELECT name FROM petstore.default.pet WHERE pet_id = 100",
-                                "VALUES ('Cat Y')");
-                assertUpdate("DELETE FROM petstore.default.pet WHERE pet_id = 100", 1);
-                assertQueryReturnsEmptyResult("SELECT name FROM petstore.default.pet WHERE pet_id = 100");
-        }
+    @Test
+    public void errors()
+    {
+        assertQueryFails("SELECT * FROM fastapi.default.error", "Server responded with error 418: \"Oops! Inevitable error happened. There goes a rainbow...\"");
+    }
 
-        // disabled along with the openmeteo catalog above (unreachable spec-location)
-        // @Test
-        // public void selectFromForecastTable() {
-        // assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
-        // +
-        // "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688",
-        // "VALUES (135.0, 'GMT', null)");
-        // assertQuery("SELECT elevation, timezone, current_weather.temperature BETWEEN -50 AND 100 AS is_livable "
-        // +
-        // "FROM openmeteo.default.v1_forecast WHERE latitude_req = 53.1325 AND longitude_req = 23.1688 AND current_weather_req = true",
-        // "VALUES (135.0, 'GMT', true)");
-        // }
+    @Test
+    public void showGbifTables()
+    {
+        assertQuery(
+                "SHOW SCHEMAS FROM gbif",
+                "VALUES 'default', 'information_schema'");
+        assertQuery(
+                "SELECT column_name FROM gbif.information_schema.columns " +
+                        "WHERE table_schema = 'default' AND table_name = 'occurrence_search' " +
+                        "AND column_name IN ('count', 'end_of_records', 'has_coordinate', 'has_geospatial_issue', 'results')",
+                "VALUES ('count'), ('end_of_records'), ('has_coordinate'), ('has_geospatial_issue'), ('results')");
+    }
 
-        @Test
-        public void selectItems() {
-                List<MaterializedRow> rows = getQueryRunner().execute(
-                                "SELECT name, description, price, tax, tags, map_entries(properties), created_at, valid_until, revised_at FROM fastapi.default.items WHERE item_id = 1")
-                                .getMaterializedRows();
-                // can't use assertQuery, because array of dates read from H2 as not using
-                // LocalDate
-                assertThat(rows).size().isEqualTo(1);
-                assertThat(rows.getFirst().getFields()).containsExactly(
-                                "Portal Gun",
-                                null,
-                                BigDecimal.valueOf(4200000000L, 8),
-                                null,
-                                List.of("sci-fi"),
-                                List.of(),
-                                null,
-                                null,
-                                List.of(LocalDate.of(2007, 10, 10), LocalDate.of(2022, 12, 8)));
-        }
+    @Test
+    public void selectFromOccurrenceSearch()
+    {
+        // regression test for OpenAPI 3.1 support: count/end_of_records/has_coordinate/has_geospatial_issue
+        // used to be resolved as varchar instead of bigint/boolean, and results as array(varchar) instead of
+        // array(row(...)), because the GBIF spec declares "openapi": "3.1.0"
+        List<MaterializedRow> rows = getQueryRunner().execute(
+                "SELECT count, end_of_records, has_coordinate, cardinality(results) > 0 AS has_results " +
+                        "FROM gbif.default.occurrence_search WHERE has_coordinate = true LIMIT 1").getMaterializedRows();
+        assertThat(rows).size().isEqualTo(1);
+        MaterializedRow row = rows.getFirst();
+        assertThat(row.getField(0)).isInstanceOf(Long.class);
+        assertThat(row.getField(1)).isInstanceOf(Boolean.class);
+        assertThat(row.getField(2)).isEqualTo(true);
+        assertThat(row.getField(3)).isEqualTo(true);
+    }
 
-        @Test
-        public void searchItemsWithInPhrase() {
-                List<MaterializedRow> rows = getQueryRunner()
-                                .execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (ARRAY['2'])")
-                                .getMaterializedRows();
-                assertThat(rows).size().isEqualTo(1);
-                assertThat(rows.getFirst().getFields()).first().isEqualTo("Plumbus");
-
-                rows = getQueryRunner()
-                                .execute("SELECT name FROM fastapi.default.search WHERE item_ids IN (ARRAY['1', '2'])")
-                                .getMaterializedRows();
-                assertThat(rows).size().isEqualTo(2);
-        }
-
-        @Test
-        public void searchItemsWithSubQuery10k() {
-                try (TestTable table = generateDataset("memory.default.test_items_10k", 10000)) {
-                        List<MaterializedRow> rows = getQueryRunner().execute(
-                                        "SELECT name FROM fastapi.default.search WHERE item_ids IN (select array_agg(item_id) from %s)"
-                                                        .formatted(table.getName()))
-                                        .getMaterializedRows();
-                        assertThat(rows)
-                                        .extracting(row -> row.getFields().getFirst())
-                                        .containsExactly("Portal Gun", "Plumbus");
-                }
-        }
-
-        @Test
-        public void searchItemsWithSubQuery100k() {
-                try (TestTable table = generateDataset("memory.default.test_items_100k", 100000)) {
-                        List<MaterializedRow> rows = getQueryRunner().execute(
-                                        "SELECT name FROM fastapi.default.search WHERE item_ids IN (select array_agg(item_id) from %s)"
-                                                        .formatted(table.getName()))
-                                        .getMaterializedRows();
-                        assertThat(rows)
-                                        .extracting(row -> row.getFields().getFirst())
-                                        .containsExactly("Portal Gun", "Plumbus");
-                }
-        }
-
-        @Test
-        public void itemCategories() {
-                List<MaterializedRow> rows = getQueryRunner()
-                                .execute("SELECT name FROM fastapi.default.item_categories").getMaterializedRows();
-                assertThat(rows).size().isEqualTo(1);
-                assertThat(rows.getFirst().getFields()).first().isEqualTo("main");
-        }
-
-        @Test
-        public void items() {
-                List<MaterializedRow> rows = getQueryRunner().execute("SELECT name FROM fastapi.default.items")
-                                .getMaterializedRows();
-                assertThat(rows)
-                                .extracting(row -> row.getFields().getFirst())
-                                .containsExactly("Portal Gun", "Plumbus");
-        }
-
-        @Test
-        public void filterItemsByTimestamp() {
-                // regression test for https://github.com/nineinchnick/trino-openapi/issues/161:
-                // encoding a TIMESTAMP
-                // predicate used to treat Trino's epoch-micros value as epoch-millis, sending a
-                // garbage query param
-                // (e.g. year 57266) to the API instead of the correct RFC 3339 encoded value
-                assertQuery("SELECT name FROM fastapi.default.items WHERE created_at_filter = TIMESTAMP '2024-09-24 15:17:58.638'",
-                                "VALUES ('Plumbus')");
-                assertQueryReturnsEmptyResult(
-                                "SELECT name FROM fastapi.default.items WHERE created_at_filter = TIMESTAMP '2024-09-24 15:17:58.639'");
-        }
-
-        @Test
-        public void errors() {
-                assertQueryFails("SELECT * FROM fastapi.default.error",
-                                "Server responded with error 418: \"Oops! Inevitable error happened. There goes a rainbow...\"");
-        }
-
-        @Test
-        public void showGbifTables() {
-                assertQuery("SHOW SCHEMAS FROM gbif",
-                                "VALUES 'default', 'information_schema'");
-                assertQuery("SELECT column_name FROM gbif.information_schema.columns " +
-                                "WHERE table_schema = 'default' AND table_name = 'occurrence_search' " +
-                                "AND column_name IN ('count', 'end_of_records', 'has_coordinate', 'has_geospatial_issue', 'results')",
-                                "VALUES ('count'), ('end_of_records'), ('has_coordinate'), ('has_geospatial_issue'), ('results')");
-        }
-
-        @Test
-        public void selectFromOccurrenceSearch() {
-                // regression test for OpenAPI 3.1 support:
-                // count/end_of_records/has_coordinate/has_geospatial_issue
-                // used to be resolved as varchar instead of bigint/boolean, and results as
-                // array(varchar) instead of
-                // array(row(...)), because the GBIF spec declares "openapi": "3.1.0"
-                List<MaterializedRow> rows = getQueryRunner().execute(
-                                "SELECT count, end_of_records, has_coordinate, cardinality(results) > 0 AS has_results "
-                                                +
-                                                "FROM gbif.default.occurrence_search WHERE has_coordinate = true LIMIT 1")
-                                .getMaterializedRows();
-                assertThat(rows).size().isEqualTo(1);
-                MaterializedRow row = rows.getFirst();
-                assertThat(row.getField(0)).isInstanceOf(Long.class);
-                assertThat(row.getField(1)).isInstanceOf(Boolean.class);
-                assertThat(row.getField(2)).isEqualTo(true);
-                assertThat(row.getField(3)).isEqualTo(true);
-        }
-
-        private TestTable generateDataset(String namePrefix, int elements) {
-                return new TestTable(new TrinoSqlExecutor(getQueryRunner()), namePrefix,
-                                "AS SELECT CAST(sequential_number AS VARCHAR) AS item_id FROM TABLE(sequence(start=>0, stop=>%d))"
-                                                .formatted(elements - 1));
-        }
+    private TestTable generateDataset(String namePrefix, int elements)
+    {
+        return new TestTable(new TrinoSqlExecutor(getQueryRunner()), namePrefix, "AS SELECT CAST(sequential_number AS VARCHAR) AS item_id FROM TABLE(sequence(start=>0, stop=>%d))".formatted(elements - 1));
+    }
 }

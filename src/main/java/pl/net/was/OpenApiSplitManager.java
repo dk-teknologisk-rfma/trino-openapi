@@ -83,24 +83,11 @@ public class OpenApiSplitManager
             implements ConnectorSplitSource
     {
         private final ConnectorTableHandle table;
-        private ConnectorSplitSource delegate;
-        private boolean closed;
+        private Optional<ConnectorSplitSource> delegate = Optional.empty();
 
         private DynamicFilteringSplitSource(ConnectorTableHandle table)
         {
             this.table = requireNonNull(table, "table is null");
-        }
-
-        @Override
-        public synchronized CompletableFuture<List<ConnectorSplit>> getNextBatch(int maxSize, DynamicFilterSnapshot dynamicFilterSnapshot)
-        {
-            if (closed) {
-                return CompletableFuture.failedFuture(new IllegalStateException("split source is closed"));
-            }
-            if (delegate == null) {
-                delegate = getSplitSource(table, dynamicFilterSnapshot.currentPredicate());
-            }
-            return delegate.getNextBatch(maxSize, dynamicFilterSnapshot);
         }
 
         @Override
@@ -110,18 +97,36 @@ public class OpenApiSplitManager
         }
 
         @Override
-        public synchronized void close()
+        public CompletableFuture<List<ConnectorSplit>> getNextBatch(int maxSize, DynamicFilterSnapshot dynamicFilterSnapshot)
         {
-            closed = true;
-            if (delegate != null) {
-                delegate.close();
-            }
+            return getDelegate(dynamicFilterSnapshot).getNextBatch(maxSize, dynamicFilterSnapshot);
         }
 
         @Override
-        public synchronized boolean isFinished()
+        public void close()
         {
-            return delegate != null && delegate.isFinished();
+            getDelegate().ifPresent(ConnectorSplitSource::close);
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return getDelegate()
+                    .map(ConnectorSplitSource::isFinished)
+                    .orElse(false);
+        }
+
+        private synchronized ConnectorSplitSource getDelegate(DynamicFilterSnapshot dynamicFilterSnapshot)
+        {
+            if (delegate.isEmpty()) {
+                delegate = Optional.of(getSplitSource(table, dynamicFilterSnapshot.currentPredicate()));
+            }
+            return delegate.get();
+        }
+
+        private synchronized Optional<ConnectorSplitSource> getDelegate()
+        {
+            return delegate;
         }
     }
 
@@ -132,7 +137,7 @@ public class OpenApiSplitManager
         OpenApiTableHandle table = (OpenApiTableHandle) tableHandle;
         Map<String, OpenApiColumn> columns = spec.getTables().get(table.getSchemaTableName().getTableName()).stream()
                 .collect(toMap(OpenApiColumn::getName, identity()));
-        // merge in dynamic filter constraints, which may contain multivalued domains
+        // merge in constraints from dynamicFilter, which may contain multivalued domains
         Optional<ConstraintApplicationResult<ConnectorTableHandle>> result = table.applyFilter(new Constraint(dynamicFilterPredicate), columns, domainExpansionLimit);
         if (result.isPresent()) {
             table = (OpenApiTableHandle) result.get().getHandle();
