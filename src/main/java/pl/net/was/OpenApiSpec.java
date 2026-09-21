@@ -481,7 +481,11 @@ public class OpenApiSpec {
                                 // see the page number (how many requests were made) and change the default
                                 // per-page limit
                                 specExtension.containsValue(parameter.getName()),
-                                parameter.getName().equals(specExtension.get(PAGINATION_PAGE_PARAM)));
+                                parameter.getName().equals(specExtension.get(PAGINATION_PAGE_PARAM)))
+                                .map(column -> OpenApiColumn.builderFrom(column)
+                                        .setStyle(parameter.getStyle() == null ? null : parameter.getStyle().toString())
+                                        .setExplode(parameter.getExplode())
+                                        .build());
                     })
                     .filter(Optional::isPresent)
                     .map(Optional::get)

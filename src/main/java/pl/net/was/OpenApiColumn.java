@@ -38,6 +38,13 @@ public class OpenApiColumn
     private final ColumnMetadata metadata;
     private final boolean isPageNumber;
     private final OpenApiColumnHandle handle;
+    // OpenAPI parameter serialisation, from the Parameter object (not the Schema) -
+    // null means "not declared", and the encoder applies the location-appropriate
+    // OAS default. Not part of equals/hashCode/toString: tests build expected
+    // columns without populating these, and they don't participate in column
+    // identity (name+type, see PrimaryKey).
+    private final String style;
+    private final Boolean explode;
 
     private OpenApiColumn(
             String name,
@@ -49,7 +56,9 @@ public class OpenApiColumn
             boolean isNullable,
             boolean isHidden,
             boolean isPageNumber,
-            String comment)
+            String comment,
+            String style,
+            Boolean explode)
     {
         this.name = name;
         this.sourceName = sourceName;
@@ -66,6 +75,8 @@ public class OpenApiColumn
                 .build();
         this.isPageNumber = isPageNumber;
         this.handle = new OpenApiColumnHandle(name, type);
+        this.style = style;
+        this.explode = explode;
     }
 
     public String getName()
@@ -111,6 +122,24 @@ public class OpenApiColumn
     public OpenApiColumnHandle getHandle()
     {
         return handle;
+    }
+
+    /**
+     * The OpenAPI {@code style} keyword for this parameter, or {@code null} if not
+     * declared.
+     */
+    public String getStyle()
+    {
+        return style;
+    }
+
+    /**
+     * The OpenAPI {@code explode} keyword for this parameter, or {@code null} if not
+     * declared.
+     */
+    public Boolean getExplode()
+    {
+        return explode;
     }
 
     public record PrimaryKey(String name, String type) {}
@@ -181,6 +210,8 @@ public class OpenApiColumn
         private boolean isHidden;
         private boolean isPageNumber;
         private String comment;
+        private String style;
+        private Boolean explode;
 
         private Builder() {}
 
@@ -196,6 +227,8 @@ public class OpenApiColumn
             this.isHidden = handle.getMetadata().isHidden();
             this.isPageNumber = handle.isPageNumber();
             this.comment = handle.getMetadata().getComment().orElse(null);
+            this.style = handle.getStyle();
+            this.explode = handle.getExplode();
         }
 
         public OpenApiColumn.Builder setName(String name)
@@ -260,6 +293,18 @@ public class OpenApiColumn
             return this;
         }
 
+        public OpenApiColumn.Builder setStyle(String style)
+        {
+            this.style = style;
+            return this;
+        }
+
+        public OpenApiColumn.Builder setExplode(Boolean explode)
+        {
+            this.explode = explode;
+            return this;
+        }
+
         public OpenApiColumn build()
         {
             return new OpenApiColumn(
@@ -272,7 +317,9 @@ public class OpenApiColumn
                     isNullable,
                     isHidden,
                     isPageNumber,
-                    comment);
+                    comment,
+                    style,
+                    explode);
         }
     }
 }
