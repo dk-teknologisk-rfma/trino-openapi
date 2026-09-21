@@ -306,7 +306,7 @@ class OpenApiClientTest {
      * {@code application/json} (unlike its {@code observation/items} sibling,
      * which responds {@code application/geo+json} and is not exposed as a
      * table), so it IS exposed as a table today - it is also the exact table
-     * the original NPE bug report reproduced against
+     * the original NPE reproduced against
      * ({@code v2_met_obs_collections_station_items}). This test therefore loads
      * the vendored spec through the real {@code OpenApiSpec} - the same
      * spec -> table -> column path the connector uses in production - rather

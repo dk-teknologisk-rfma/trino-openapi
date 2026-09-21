@@ -178,9 +178,9 @@ class JsonTrinoConverterTest
     }
 
     /**
-     * Regression test for Bug B: {@code convert(Block, ...)} (the write/INSERT
-     * direction) had no DecimalType branch at all and threw "Unsupported type"
-     * for any decimal column. See docs/adr/0002-parameter-rendering-seam.md for
+     * {@code convert(Block, ...)} (the write/INSERT direction) had no
+     * DecimalType branch at all and threw "Unsupported type" for any decimal
+     * column. See docs/adr/0002-parameter-rendering-seam.md for
      * the sibling fix on the read side.
      */
     @Test
