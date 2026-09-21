@@ -15,9 +15,10 @@ Used as regression fixtures for the parameter-rendering seam (see
 docs/adr/0002-parameter-rendering-seam.md): both specs declare a `bbox` query
 parameter of `style: form`, but only `dmi-metobs.json` sets `explode: false`
 explicitly. `dmi-climateData.json` omits `explode`, which the OpenAPI spec
-defaults to `true` for `style: form`. The two fixtures are otherwise kept as
-they were fetched, not hand-edited, so the difference in emitted query
-strings between them is spec-faithful rather than a fixture artifact.
+defaults to `true` for `style: form`. Both `bbox` declarations are exactly as
+fetched, so the difference in emitted query strings between them is
+spec-faithful rather than a fixture artifact. The only edit made to either
+fixture is the media-type rewrite described below.
 
 ## `application/geo+json` rewritten to `application/json` in dmi-climateData.json
 
