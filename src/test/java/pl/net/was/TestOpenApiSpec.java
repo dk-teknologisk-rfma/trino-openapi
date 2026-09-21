@@ -2281,6 +2281,53 @@ class TestOpenApiSpec {
                 Assertions.assertThat(spec.getTables()).doesNotContainKey("ghosts");
         }
 
+        /**
+         * Part 1 of docs/adr/0001-unsatisfiable-security-requirements.md: a
+         * security requirement - root-level or per-operation - that names a
+         * scheme components.securitySchemes doesn't declare is unsatisfiable,
+         * but that must not fail catalog creation; it's only logged, at parse
+         * time, so whoever's configuring the catalog can see it without
+         * waiting for a request to fail. See also
+         * AuthenticationTest#unsatisfiableRootRequirementThrowsTrinoExceptionNamingTheScheme
+         * for the request-time half.
+         */
+        @Test
+        public void warnsAboutRootSecurityRequirementNamingUndeclaredScheme() {
+                OpenAPI openApi = new OpenAPI()
+                                .paths(pathsWithJsonGet("/pets"))
+                                .security(List.of(new SecurityRequirement().addList("apiKeyAuth")));
+
+                java.util.List<String> warnings = new java.util.ArrayList<>();
+                java.util.logging.Handler handler = new java.util.logging.Handler() {
+                        @Override
+                        public void publish(java.util.logging.LogRecord record) {
+                                warnings.add(record.getMessage().formatted(record.getParameters()));
+                        }
+
+                        @Override
+                        public void flush() {}
+
+                        @Override
+                        public void close() {}
+                };
+                java.util.logging.Logger julLogger = java.util.logging.Logger.getLogger(OpenApiSpec.class.getName());
+                julLogger.addHandler(handler);
+                try {
+                        OpenApiSpec spec = new OpenApiSpec(openApi);
+                        // construction succeeds - the catalog is not rejected - and the
+                        // table is still exposed
+                        Assertions.assertThat(spec.getTables()).containsKey("pets");
+                } finally {
+                        julLogger.removeHandler(handler);
+                }
+
+                Assertions.assertThat(warnings)
+                                .anySatisfy(message -> Assertions.assertThat(message)
+                                                .contains("apiKeyAuth")
+                                                .contains("root")
+                                                .contains("undeclared"));
+        }
+
         private static Paths pathsWithJsonGet(String path) {
                 Schema<?> schema = new Schema<>();
                 schema.setType("object");

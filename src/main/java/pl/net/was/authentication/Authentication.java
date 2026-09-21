@@ -113,10 +113,15 @@ public class Authentication
             // (or otherwise failed to apply); refuse rather than send a
             // credential-less request silently. See
             // docs/adr/0001-unsatisfiable-security-requirements.md.
+            List<String> schemeNames = requirements.stream()
+                    .flatMap(requirement -> requirement.keySet().stream())
+                    .distinct()
+                    .toList();
             throw new TrinoException(GENERIC_INTERNAL_ERROR,
                     format("None of the security requirements for %s %s could be satisfied; "
-                            + "check that every scheme they reference is declared in components.securitySchemes",
-                            method, request.getHeader("X-Trino-OpenAPI-Path")));
+                            + "referenced scheme(s) %s are not usable - check that each is declared "
+                            + "in components.securitySchemes and fully configured",
+                            method, request.getHeader("X-Trino-OpenAPI-Path"), schemeNames));
         }
         if (requirements.isEmpty() && defaultAuthenticationType != AuthenticationType.NONE) {
             switch (defaultAuthenticationType) {
