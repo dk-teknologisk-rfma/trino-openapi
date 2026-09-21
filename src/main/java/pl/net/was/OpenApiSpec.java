@@ -254,6 +254,34 @@ public class OpenApiSpec {
                                         opEntry.getValue().getSecurity()))
                                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue))))
                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        warnAboutUnsatisfiableSecurityRequirements();
+    }
+
+    /**
+     * A security requirement naming a scheme that {@code components.securitySchemes}
+     * doesn't define is unsatisfiable - it can never be applied to a request. That's
+     * tolerated (see {@code Authentication}), but it's still worth naming at
+     * parse time, since it's usually a typo or a stale reference in someone else's
+     * spec. See docs/adr/0001-unsatisfiable-security-requirements.md.
+     */
+    private void warnAboutUnsatisfiableSecurityRequirements() {
+        warnAboutUnsatisfiableSecurityRequirements("root", securityRequirements);
+        pathSecurityRequirements.forEach((path, methods) -> methods.forEach((method, requirements) ->
+                warnAboutUnsatisfiableSecurityRequirements(method + " " + path, requirements)));
+    }
+
+    private void warnAboutUnsatisfiableSecurityRequirements(String context, List<SecurityRequirement> requirements) {
+        for (SecurityRequirement requirement : requirements) {
+            List<String> undeclared = requirement.keySet().stream()
+                    .filter(name -> !securitySchemas.containsKey(name))
+                    .toList();
+            if (!undeclared.isEmpty()) {
+                log.warn("Security requirement %s at %s references undeclared securitySchemes %s; "
+                        + "it can never be satisfied and will be skipped at request time",
+                        requirement.keySet(), context, undeclared);
+            }
+        }
     }
 
     private static String pathsToString(PathItem.HttpMethod method, List<String> paths) {

@@ -27,6 +27,7 @@ import io.swagger.v3.oas.models.security.OAuthFlow;
 import io.swagger.v3.oas.models.security.OAuthFlows;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.trino.spi.TrinoException;
 import pl.net.was.OpenApiConfig;
 import pl.net.was.OpenApiSpec;
 
@@ -48,6 +49,7 @@ import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.util.stream.Collectors.joining;
 import static pl.net.was.authentication.AuthenticationScheme.BEARER;
 
@@ -105,7 +107,17 @@ public class Authentication
         PathItem.HttpMethod method = PathItem.HttpMethod.valueOf(request.getMethod());
         Request.Builder builder = fromRequest(request);
         List<SecurityRequirement> requirements = getRequirements(request.getHeader("X-Trino-OpenAPI-Path"), method);
-        applyAuthFilters(builder, requirements, uri);
+        boolean satisfied = applyAuthFilters(builder, requirements, uri);
+        if (!requirements.isEmpty() && !satisfied) {
+            // every requirement named a scheme that securitySchemes doesn't define
+            // (or otherwise failed to apply); refuse rather than send a
+            // credential-less request silently. See
+            // docs/adr/0001-unsatisfiable-security-requirements.md.
+            throw new TrinoException(GENERIC_INTERNAL_ERROR,
+                    format("None of the security requirements for %s %s could be satisfied; "
+                            + "check that every scheme they reference is declared in components.securitySchemes",
+                            method, request.getHeader("X-Trino-OpenAPI-Path")));
+        }
         if (requirements.isEmpty() && defaultAuthenticationType != AuthenticationType.NONE) {
             switch (defaultAuthenticationType) {
                 case API_KEY -> {
@@ -130,7 +142,12 @@ public class Authentication
         return securityRequirements;
     }
 
-    private void applyAuthFilters(Request.Builder builder, List<SecurityRequirement> requirements, URI uri)
+    /**
+     * @return true if some requirement was fully satisfiable and its auth was applied to
+     *         {@code builder}; false if {@code requirements} is non-empty but every one of
+     *         them named a scheme (or scheme detail) that isn't actually configured.
+     */
+    private boolean applyAuthFilters(Request.Builder builder, List<SecurityRequirement> requirements, URI uri)
     {
         // only one of the requirements needs to be satisfied - test which methods are configured, pick first one, and only fail if there are none
         for (SecurityRequirement requirement : requirements) {
@@ -155,12 +172,14 @@ public class Authentication
                         default -> throw new IllegalArgumentException(format("Unsupported security schema %s", securitySchema.getType()));
                     }
                 });
-                return;
+                return true;
             }
             catch (NullPointerException ignored) {
-                // ignore
+                // this requirement is unsatisfiable (a referenced scheme, or a detail of
+                // it like its OAuth flow, isn't configured) - try the next one
             }
         }
+        return requirements.isEmpty();
     }
 
     private void applyApiKeyAuth(Request.Builder builder, URI uri, SecurityScheme scheme)
