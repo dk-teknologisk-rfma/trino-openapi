@@ -14,7 +14,17 @@
 
 package pl.net.was;
 
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.Paths;
+import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.parser.OpenAPIV3Parser;
 import io.swagger.v3.parser.core.models.ParseOptions;
@@ -28,6 +38,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.net.URL;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,6 +54,8 @@ import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.TimestampType.TIMESTAMP_MILLIS;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.util.Objects.requireNonNull;
+import static pl.net.was.OpenApiSpec.HTTP_OK;
+import static pl.net.was.OpenApiSpec.MIME_JSON;
 import static pl.net.was.OpenApiSpec.SCHEMA_NAME;
 
 class TestOpenApiSpec {
@@ -2119,6 +2132,173 @@ class TestOpenApiSpec {
                 Assertions.assertThat(occurrenceFields.get("isInCluster")).isEqualTo(BOOLEAN);
                 Assertions.assertThat(occurrenceFields.get("issues")).isEqualTo(new ArrayType(VARCHAR));
                 Assertions.assertThat(occurrenceFields.get("media")).isInstanceOf(ArrayType.class);
+        }
+
+        /**
+         * Every optional structure in an OpenAPI document may legally be absent,
+         * including {@code paths} itself. The cross product asserts that absence
+         * degrades to empty everywhere: an absent {@code paths} yields a spec
+         * with zero tables rather than throwing.
+         */
+        @Test
+        public void absentStructuresMatrix() {
+                for (int bits = 0; bits < 32; bits++) {
+                        boolean hasPaths = (bits & 1) != 0;
+                        boolean hasComponents = (bits & 2) != 0;
+                        boolean hasSecuritySchemes = hasComponents && (bits & 4) != 0;
+                        boolean hasSchemas = hasComponents && (bits & 8) != 0;
+                        boolean hasSecurity = (bits & 16) != 0;
+
+                        OpenAPI openApi = new OpenAPI();
+                        if (hasPaths) {
+                                openApi.setPaths(pathsWithJsonGet("/pets"));
+                        }
+                        if (hasComponents) {
+                                Components components = new Components();
+                                if (hasSecuritySchemes) {
+                                        components.setSecuritySchemes(Map.of("apiKeyAuth", apiKeyScheme()));
+                                }
+                                if (hasSchemas) {
+                                        components.setSchemas(new LinkedHashMap<>(Map.of("Pet", objectSchema)));
+                                }
+                                openApi.setComponents(components);
+                        }
+                        if (hasSecurity) {
+                                openApi.setSecurity(List.of(new SecurityRequirement().addList("apiKeyAuth")));
+                        }
+
+                        String label = "bits=" + bits;
+                        OpenApiSpec spec = new OpenApiSpec(openApi);
+                        if (!hasPaths) {
+                                Assertions.assertThat(spec.getTables()).describedAs(label).isEmpty();
+                        } else {
+                                Assertions.assertThat(spec.getTables()).describedAs(label).containsKey("pets");
+                        }
+                        Assertions.assertThat(spec.getSecuritySchemas()).describedAs(label).isNotNull();
+                        Assertions.assertThat(spec.getSecurityRequirements()).describedAs(label).isNotNull();
+                        Assertions.assertThat(spec.getSecuritySchemas().keySet())
+                                        .describedAs(label)
+                                        .isEqualTo(hasSecuritySchemes ? Set.of("apiKeyAuth") : Set.of());
+                        Assertions.assertThat(spec.getSecurityRequirements())
+                                        .describedAs(label)
+                                        .hasSize(hasSecurity ? 1 : 0);
+                }
+        }
+
+        @Test
+        public void emptyPathsYieldsNoTables() {
+                OpenAPI openApi = new OpenAPI();
+                openApi.setPaths(new Paths());
+                OpenApiSpec spec = new OpenApiSpec(openApi);
+                Assertions.assertThat(spec.getTables()).isEmpty();
+        }
+
+        /**
+         * An absent API surface no longer fails catalog creation: it simply yields
+         * a zero-table catalog. 3.0 still requires {@code paths}, so a document
+         * missing it entirely is refused by the parser before the connector ever
+         * sees it - that remains a hard failure. But a 3.1 document carrying only
+         * {@code components}, and an explicit {@code paths: {}} on either version,
+         * now load cleanly with zero tables.
+         */
+        @Test
+        public void specWithoutPathsIsRejectedOnBothOasVersions() {
+                Assertions.assertThatThrownBy(() -> parseSpec("""
+                                openapi: 3.0.3
+                                info:
+                                  title: minimal
+                                  version: "1.0"
+                                """))
+                                .isInstanceOf(IllegalArgumentException.class)
+                                .hasMessageContaining("Failed to parse the OpenAPI spec");
+
+                OpenApiSpec componentsOnly = parseSpec("""
+                                openapi: 3.1.0
+                                info:
+                                  title: components only
+                                  version: "1.0"
+                                components:
+                                  schemas:
+                                    Pet:
+                                      type: object
+                                """);
+                Assertions.assertThat(componentsOnly.getTables()).isEmpty();
+
+                for (String version : List.of("3.0.3", "3.1.0")) {
+                        OpenApiSpec spec = parseSpec("""
+                                        openapi: %s
+                                        info:
+                                          title: empty paths
+                                          version: "1.0"
+                                        paths: {}
+                                        """.formatted(version));
+                        Assertions.assertThat(spec.getTables()).describedAs(version).isEmpty();
+                }
+        }
+
+        /**
+         * A spec with no components block at all - legal in 3.0 and 3.1, common in
+         * small or generated specs - used to throw NullPointerException while the
+         * catalog was being created. This is the regression test for that.
+         */
+        @Test
+        public void specWithoutComponentsBlock() {
+                OpenApiSpec spec = parseSpec("""
+                                openapi: 3.1.0
+                                info:
+                                  title: no components
+                                  version: "1.0"
+                                paths:
+                                  /pets:
+                                    get:
+                                      responses:
+                                        "200":
+                                          description: ok
+                                          content:
+                                            application/json:
+                                              schema:
+                                                type: object
+                                                properties:
+                                                  name:
+                                                    type: string
+                                """);
+                Assertions.assertThat(spec.getTables()).containsKey("pets");
+                Assertions.assertThat(spec.getSecuritySchemas()).isEmpty();
+                Assertions.assertThat(spec.getSecurityRequirements()).isEmpty();
+        }
+
+        /**
+         * An operation with no responses block is legal and must not take down the
+         * whole spec; it simply exposes no JSON table.
+         */
+        @Test
+        public void operationWithoutResponsesIsIgnored() {
+                Paths paths = pathsWithJsonGet("/pets");
+                paths.addPathItem("/ghosts", new PathItem().get(new Operation()));
+
+                OpenApiSpec spec = new OpenApiSpec(new OpenAPI().paths(paths));
+                Assertions.assertThat(spec.getTables()).containsKey("pets");
+                Assertions.assertThat(spec.getTables()).doesNotContainKey("ghosts");
+        }
+
+        private static Paths pathsWithJsonGet(String path) {
+                Schema<?> schema = new Schema<>();
+                schema.setType("object");
+                schema.setProperties(new LinkedHashMap<>(Map.of("name", newSchema("string"))));
+
+                Operation get = new Operation().responses(new ApiResponses().addApiResponse(
+                                HTTP_OK,
+                                new ApiResponse()
+                                                .description("ok")
+                                                .content(new Content().addMediaType(MIME_JSON, new MediaType().schema(schema)))));
+                return new Paths().addPathItem(path, new PathItem().get(get));
+        }
+
+        private static SecurityScheme apiKeyScheme() {
+                return new SecurityScheme()
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)
+                                .name("X-Api-Key");
         }
 
         private OpenApiSpec loadSpec(String name) {

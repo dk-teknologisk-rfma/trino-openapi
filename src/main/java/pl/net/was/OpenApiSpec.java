@@ -22,9 +22,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ListMultimap;
 import com.google.inject.Inject;
 import io.airlift.log.Logger;
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
@@ -99,6 +101,7 @@ public class OpenApiSpec {
 
     private final Map<String, Map<PathItem.HttpMethod, List<SecurityRequirement>>> pathSecurityRequirements;
     private final Map<String, SecurityScheme> securitySchemas;
+    private final Map<String, Schema> schemas;
     private final List<SecurityRequirement> securityRequirements;
 
     @Inject
@@ -125,7 +128,21 @@ public class OpenApiSpec {
          * orgs_security_product_enablement
          * Where both tables will include columns created from the /orgs path response.
          */
-        Map<String, List<Map.Entry<String, PathItem>>> pathGroups = openApi.getPaths().entrySet().stream()
+        Paths paths = firstNonNull(openApi.getPaths(), new Paths());
+
+        Components components = firstNonNull(openApi.getComponents(), new Components());
+        this.securitySchemas = firstNonNull(components.getSecuritySchemes(), Map.of());
+        this.schemas = firstNonNull(components.getSchemas(), Map.of());
+        this.securityRequirements = firstNonNull(openApi.getSecurity(), List.of());
+
+        paths.forEach((path, pathItem) -> {
+            if (!hasOpsWithJson(pathItem)) {
+                log.info("Skipping path %s: no operation has an application/json 200 response", path);
+            } else if (getIdentifier(stripPathParams(path)).isEmpty()) {
+                log.info("Skipping path %s: resolves to an empty identifier", path);
+            }
+        });
+        Map<String, List<Map.Entry<String, PathItem>>> pathGroups = paths.entrySet().stream()
                 .filter(entry -> hasOpsWithJson(entry.getValue()))
                 .filter(entry -> !getIdentifier(stripPathParams(entry.getKey())).isEmpty())
                 // TODO group paths by the response type, otherwise it's not possible to create
@@ -199,6 +216,14 @@ public class OpenApiSpec {
         this.errorPointers = errorPointers.buildOrThrow();
         this.resultsPointers = resultsPointers.buildOrThrow();
 
+        if (this.tables.isEmpty()) {
+            log.warn("The OpenAPI spec at %s defines %d path(s), but none of them yield a table "
+                    + "(no JSON 200 response, or an identifier that resolves to an empty name); "
+                    + "the catalog will expose no tables",
+                    openApi.getInfo() != null ? openApi.getInfo().getTitle() : "<unknown>",
+                    paths.size());
+        }
+
         this.handles.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .flatMap(entry -> Stream.concat(Stream.of(
@@ -219,7 +244,7 @@ public class OpenApiSpec {
                                         "optional for: " + column.getOptionalPredicate())))
                 .forEach(log::info);
 
-        this.pathSecurityRequirements = openApi.getPaths().entrySet().stream()
+        this.pathSecurityRequirements = paths.entrySet().stream()
                 .map(pathEntry -> Map.entry(
                         pathEntry.getKey(),
                         pathEntry.getValue().readOperationsMap().entrySet().stream()
@@ -229,8 +254,6 @@ public class OpenApiSpec {
                                         opEntry.getValue().getSecurity()))
                                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue))))
                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
-        this.securitySchemas = openApi.getComponents().getSecuritySchemes();
-        this.securityRequirements = openApi.getSecurity();
     }
 
     private static String pathsToString(PathItem.HttpMethod method, List<String> paths) {
@@ -265,6 +288,7 @@ public class OpenApiSpec {
 
     private static boolean hasJsonResponse(Operation op) {
         return op != null && (op.getDeprecated() == null || !op.getDeprecated()) &&
+                op.getResponses() != null &&
                 op.getResponses().get(HTTP_OK) != null &&
                 op.getResponses().get(HTTP_OK).getContent() != null &&
                 op.getResponses().get(HTTP_OK).getContent().get(MIME_JSON) != null;
@@ -734,7 +758,7 @@ public class OpenApiSpec {
             }
             return Optional.of(new TypeTuple(BIGINT, property));
         }
-        Schema<?> referenced = openApi.getComponents().getSchemas().get(type);
+        Schema<?> referenced = schemas.get(type);
         if (referenced != null) {
             return convertType(referenced).map(convertedType -> new TypeTuple(convertedType.type(), referenced));
         }

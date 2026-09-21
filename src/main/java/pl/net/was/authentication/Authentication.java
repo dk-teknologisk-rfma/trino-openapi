@@ -106,7 +106,7 @@ public class Authentication
         Request.Builder builder = fromRequest(request);
         List<SecurityRequirement> requirements = getRequirements(request.getHeader("X-Trino-OpenAPI-Path"), method);
         applyAuthFilters(builder, requirements, uri);
-        if ((requirements == null || requirements.isEmpty()) && defaultAuthenticationType != AuthenticationType.NONE) {
+        if (requirements.isEmpty() && defaultAuthenticationType != AuthenticationType.NONE) {
             switch (defaultAuthenticationType) {
                 case API_KEY -> {
                     SecurityScheme scheme = new SecurityScheme();
@@ -132,9 +132,6 @@ public class Authentication
 
     private void applyAuthFilters(Request.Builder builder, List<SecurityRequirement> requirements, URI uri)
     {
-        if (requirements == null) {
-            return;
-        }
         // only one of the requirements needs to be satisfied - test which methods are configured, pick first one, and only fail if there are none
         for (SecurityRequirement requirement : requirements) {
             try {
