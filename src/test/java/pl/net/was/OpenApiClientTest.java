@@ -221,6 +221,53 @@ class OpenApiClientTest {
         assertThat(rendered).containsExactly("a,b");
     }
 
+    /**
+     * getFilter returns a plain {@link String} for VARCHAR (see the comment at
+     * its {@code StandardTypes.VARCHAR} case), not a {@link io.trino.spi.type.VarcharType}
+     * {@code Slice}: {@code InMemoryRecordSet}'s VARCHAR field setter only
+     * accepts {@code String}/{@code byte[]}, not {@code Slice} - verified
+     * against {@code InMemoryRecordSet$InMemoryRecordCursor.getSlice}, which
+     * does {@code checkcast String; Slices.utf8Slice(...)} when the stored
+     * value isn't already a {@code Slice} or {@code byte[]}.
+     *
+     * <p>encodeParam must not escape/percent-encode this text itself - that
+     * text with a space and an {@code &} must reach the wire correctly; actual
+     * percent-encoding happens downstream, in {@code HttpUriBuilder}
+     * (airlift), when the query string is assembled - encodeParam only owns
+     * OpenAPI style/explode serialisation, not URL escaping (see
+     * docs/adr/0002-parameter-rendering-seam.md). This test exercises both
+     * halves: getFilter -> encodeParam produces the raw, unescaped text, and
+     * that text, run through the real {@code HttpUriBuilder} the connector
+     * uses to build request URIs, is correctly percent-encoded on the wire.
+     */
+    @Test
+    void shouldEncodeVarcharFilterAndPercentEncodeOnTheWire() {
+        OpenApiColumn column = OpenApiColumn.builder()
+                .setName("q")
+                .setSourceName("q")
+                .setType(VARCHAR)
+                .setSourceType(new Schema<>().type("string"))
+                .build();
+
+        String rawValue = "hello world & more";
+        TupleDomain<ColumnHandle> constraint = TupleDomain.withColumnDomains(Map.of(
+                column.getHandle(),
+                Domain.create(ValueSet.of(VARCHAR, io.airlift.slice.Slices.utf8Slice(rawValue)), false)));
+
+        Object value = OpenApiClient.getFilter(column, constraint);
+        assertThat(value).isInstanceOf(String.class).isEqualTo(rawValue);
+
+        List<String> rendered = OpenApiClient.encodeParam(column, ParameterLocation.QUERY, value);
+        assertThat(rendered).containsExactly(rawValue);
+
+        java.net.URI uri = io.airlift.http.client.HttpUriBuilder
+                .uriBuilderFrom(java.net.URI.create("https://example.com/api"))
+                .addParameter("q", rendered)
+                .build();
+        assertThat(uri.getRawQuery()).isEqualTo("q=hello%20world%20%26%20more");
+        assertThat(uri.getQuery()).isEqualTo("q=" + rawValue);
+    }
+
     @Test
     void shouldRejectMapQueryParameters() {
         io.trino.spi.type.MapType mapType = new io.trino.spi.type.MapType(VARCHAR, VARCHAR, new io.trino.spi.type.TypeOperators());
@@ -255,19 +302,21 @@ class OpenApiClientTest {
      * dmi-metobs.json declares {@code bbox} with {@code style: form, explode: false}
      * explicitly, so it must always render as one comma-joined query parameter.
      *
-     * <p>Note: as fetched, both DMI specs' {@code .../items} endpoints - the ones
-     * carrying {@code bbox} - respond with {@code application/geo+json}, not
-     * {@code application/json}, so this connector does not currently expose them
-     * as tables at all ({@code hasJsonResponse} only recognises exact
-     * {@code application/json}). That is a separate, out-of-scope gap; these
-     * tests read the {@code bbox} {@code Parameter} straight out of the spec and
-     * build an {@link OpenApiColumn} from it the same way {@code OpenApiSpec}
-     * would, so they still exercise the real style/explode declarations without
-     * depending on that gap being fixed.
+     * <p>{@code /v2/metObs/collections/station/items} responds
+     * {@code application/json} (unlike its {@code observation/items} sibling,
+     * which responds {@code application/geo+json} and is not exposed as a
+     * table), so it IS exposed as a table today - it is also the exact table
+     * the original NPE bug report reproduced against
+     * ({@code v2_met_obs_collections_station_items}). This test therefore loads
+     * the vendored spec through the real {@code OpenApiSpec} - the same
+     * spec -> table -> column path the connector uses in production - rather
+     * than hand-building an {@link OpenApiColumn}, so it actually exercises the
+     * style/explode plumbing in {@code OpenApiSpec} that carries those
+     * declarations from the parsed {@code Parameter} onto the column.
      */
     @Test
     void shouldEncodeDmiMetObsBboxAsSingleCommaJoinedParameter() {
-        OpenApiColumn bbox = bboxColumnFromSpec("dmi-metobs.json", "/v2/metObs/collections/station/items");
+        OpenApiColumn bbox = bboxColumnFromSpec("dmi-metobs.json", "v2_met_obs_collections_station_items");
         assertThat(bbox.getStyle()).isEqualTo("form");
         assertThat(bbox.getExplode()).isEqualTo(false);
 
@@ -275,7 +324,7 @@ class OpenApiClientTest {
         Block block = shortDecimalArrayBlock(elementType, "8.0", "55.0", "11.0", "56.0");
 
         List<String> rendered = OpenApiClient.encodeParam(bbox, ParameterLocation.QUERY, block);
-        assertThat(rendered).hasSize(1);
+        assertThat(rendered).containsExactly("8.00000000,55.00000000,11.00000000,56.00000000");
     }
 
     /**
@@ -286,17 +335,29 @@ class OpenApiClientTest {
      * both are "the same" bbox parameter conceptually. This is spec-faithful and
      * correct connector behaviour: DMI's climateData/oceanObs specs omit
      * {@code explode}, DMI's own metObs spec sets it to {@code false} for the
-     * same parameter. The fix belongs in the consuming pipeline (a spec_filter),
-     * not here - do not "fix" this by special-casing DMI.
+     * same parameter. The fix belongs in the consuming pipeline (GATE), not
+     * here - do not "fix" this by special-casing DMI.
      *
      * <p>The swagger-parser (with {@code resolveFully}) fills in the {@code true}
      * OAS default itself, so {@code getExplode()} is already {@code true} rather
      * than {@code null} by the time this connector sees it; either way the wire
      * behaviour - and the reason it differs from dmi-metobs - is the same.
+     *
+     * <p>As fetched, every {@code .../items} endpoint in dmi-climateData.json
+     * responds {@code application/geo+json}, so none would be exposed as a
+     * table by this connector directly. In production this never happens:
+     * GATE's {@code patch_spec} rewrites {@code application/geo+json} to
+     * {@code application/json} for every response before the connector ever
+     * sees the spec (see
+     * {@code gate_pipelines/utils/openapi_specs.py}). The vendored fixture has
+     * been patched the same way (see {@code dmi-specs-README.md}) so this test
+     * reflects what the connector actually receives in production, and - like
+     * the metObs test above - loads it through the real {@code OpenApiSpec}
+     * rather than hand-building a column.
      */
     @Test
     void shouldEncodeDmiClimateDataBboxAsRepeatedParameters() {
-        OpenApiColumn bbox = bboxColumnFromSpec("dmi-climateData.json", "/v2/climateData/collections/station/items");
+        OpenApiColumn bbox = bboxColumnFromSpec("dmi-climateData.json", "v2_climate_data_collections_station_items");
         assertThat(bbox.getStyle()).isEqualTo("form");
         assertThat(bbox.getExplode()).isTrue();
 
@@ -304,30 +365,31 @@ class OpenApiClientTest {
         Block block = shortDecimalArrayBlock(elementType, "8.0", "55.0", "11.0", "56.0");
 
         List<String> rendered = OpenApiClient.encodeParam(bbox, ParameterLocation.QUERY, block);
-        assertThat(rendered).hasSize(4);
+        assertThat(rendered).containsExactly("8.00000000", "55.00000000", "11.00000000", "56.00000000");
     }
 
-    private static OpenApiColumn bboxColumnFromSpec(String specResource, String path) {
+    /**
+     * Loads {@code specResource} through the real {@code OpenApiSpec} (spec ->
+     * tables -> columns), exactly as the connector does at catalog creation
+     * time, and returns the {@code bbox} predicate column of {@code tableName}.
+     */
+    private static OpenApiColumn bboxColumnFromSpec(String specResource, String tableName) {
+        OpenApiConfig config = new OpenApiConfig();
         URL specUrl = requireNonNull(OpenApiClientTest.class.getClassLoader().getResource(specResource));
-        io.swagger.v3.parser.core.models.ParseOptions parseOptions = new io.swagger.v3.parser.core.models.ParseOptions();
-        parseOptions.setResolveFully(true);
-        io.swagger.v3.oas.models.OpenAPI openApi = new io.swagger.v3.parser.OpenAPIV3Parser()
-                .readLocation(specUrl.getFile(), null, parseOptions)
-                .getOpenAPI();
-        io.swagger.v3.oas.models.parameters.Parameter bbox = openApi.getPaths().get(path).getGet()
-                .getParameters().stream()
-                .filter(p -> "bbox".equals(p.getName()))
+        config.setSpecLocation(specUrl.getFile());
+        OpenApiSpec spec = new OpenApiSpec(config);
+        List<OpenApiColumn> columns = spec.getTables().get(tableName);
+        requireNonNull(columns, "no table " + tableName + " in " + specResource + "; tables were: " + spec.getTables().keySet());
+        // the response body also has a GeoJSON "bbox" field, so OpenApiSpec's
+        // ambiguous-name handling renames the query *parameter* column to
+        // "bbox_req" (see getColumn's hasAmbiguousName handling); match on
+        // sourceName + presence of a style, not on the (possibly renamed) name,
+        // so this doesn't silently start asserting against the wrong column.
+        return columns.stream()
+                .filter(c -> "bbox".equals(c.getSourceName()) && c.getStyle() != null)
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("no bbox parameter on " + path + " in " + specResource));
-        DecimalType elementType = DecimalType.createDecimalType(18, 8);
-        return OpenApiColumn.builder()
-                .setName("bbox")
-                .setSourceName("bbox")
-                .setType(new ArrayType(elementType))
-                .setSourceType(new Schema<>().items(new Schema<>().type("number")))
-                .setStyle(bbox.getStyle() == null ? null : bbox.getStyle().toString())
-                .setExplode(bbox.getExplode())
-                .build();
+                .orElseThrow(() -> new AssertionError("no bbox predicate column on table " + tableName + " in " + specResource
+                        + "; columns were: " + columns.stream().map(OpenApiColumn::getName).toList()));
     }
 
     private static OpenApiColumn decimalColumn(int precision, int scale) {
