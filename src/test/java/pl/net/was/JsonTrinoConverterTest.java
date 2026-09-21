@@ -13,12 +13,23 @@
  */
 package pl.net.was;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import io.swagger.v3.oas.models.media.Schema;
 import io.trino.spi.TrinoException;
+import io.trino.spi.block.Block;
+import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.DateType;
+import io.trino.spi.type.DecimalType;
+import io.trino.spi.type.Int128;
 import io.trino.spi.type.TimestampType;
 import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -164,5 +175,65 @@ class JsonTrinoConverterTest
 
         assertThat(JsonTrinoConverter.convert(TextNode.valueOf("2024-09-24"), type, schema))
                 .isEqualTo(19990);
+    }
+
+    /**
+     * Regression test for Bug B: {@code convert(Block, ...)} (the write/INSERT
+     * direction) had no DecimalType branch at all and threw "Unsupported type"
+     * for any decimal column. See docs/adr/0002-parameter-rendering-seam.md for
+     * the sibling fix on the read side.
+     */
+    @Test
+    void shouldRoundTripShortDecimalThroughBothDirections()
+    {
+        DecimalType type = DecimalType.createDecimalType(18, 8);
+        Schema<?> schema = new Schema<>().type("number");
+
+        Object decoded = JsonTrinoConverter.convert(DoubleNode.valueOf(55.12345678), type, schema);
+        assertThat(decoded).isInstanceOf(Long.class);
+
+        BlockBuilder builder = type.createBlockBuilder(null, 1);
+        type.writeLong(builder, (Long) decoded);
+        Block block = builder.build();
+
+        Object rendered = JsonTrinoConverter.convert(block, 0, type, schema, new ObjectMapper());
+        assertThat(rendered).isEqualTo(new BigDecimal("55.12345678"));
+    }
+
+    @Test
+    void shouldRoundTripLongDecimalThroughBothDirections()
+    {
+        DecimalType type = DecimalType.createDecimalType(30, 10);
+        Schema<?> schema = new Schema<>().type("number");
+        BigInteger unscaled = new BigInteger("123456789012345678901234567890");
+
+        BlockBuilder builder = type.createBlockBuilder(null, 1);
+        type.writeObject(builder, Int128.valueOf(unscaled));
+        Block block = builder.build();
+
+        Object rendered = JsonTrinoConverter.convert(block, 0, type, schema, new ObjectMapper());
+        assertThat(rendered).isEqualTo(new BigDecimal(unscaled, 10));
+    }
+
+    @Test
+    void shouldConvertDecimalArrayBlockToJsonArray()
+    {
+        ArrayType arrayType = new ArrayType(DecimalType.createDecimalType(18, 8));
+        Schema<?> itemSchema = new Schema<>().type("number");
+        Schema<?> arraySchema = new Schema<>().items(itemSchema);
+
+        ArrayNode input = new ObjectMapper().createArrayNode();
+        input.add(8.0).add(55.0).add(11.0);
+
+        Object converted = JsonTrinoConverter.convert(input, arrayType, arraySchema);
+        assertThat(converted).isInstanceOf(Block.class);
+
+        Object result = JsonTrinoConverter.convert((Block) converted, 0, arrayType, arraySchema, new ObjectMapper());
+        assertThat(result).isInstanceOf(ArrayNode.class);
+        ArrayNode resultArray = (ArrayNode) result;
+        assertThat(resultArray).hasSize(3);
+        assertThat(resultArray.get(0).decimalValue()).isEqualByComparingTo("8.00000000");
+        assertThat(resultArray.get(1).decimalValue()).isEqualByComparingTo("55.00000000");
+        assertThat(resultArray.get(2).decimalValue()).isEqualByComparingTo("11.00000000");
     }
 }

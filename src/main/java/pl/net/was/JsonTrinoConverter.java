@@ -40,6 +40,7 @@ import io.trino.spi.type.DateTimeEncoding;
 import io.trino.spi.type.DateType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.DoubleType;
+import io.trino.spi.type.Int128;
 import io.trino.spi.type.IntegerType;
 import io.trino.spi.type.MapType;
 import io.trino.spi.type.RealType;
@@ -51,6 +52,7 @@ import io.trino.spi.type.TinyintType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -324,6 +326,19 @@ public class JsonTrinoConverter {
         return dateFormatter.format(instant.atZone(ZoneOffset.UTC));
     }
 
+    /**
+     * Extracts an exact decimal value out of a block, without ever going through
+     * {@code double}, which loses precision. Shared with the parameter-rendering
+     * seam in OpenApiClient.
+     */
+    static BigDecimal decimalValue(Block block, int position, DecimalType decimalType) {
+        if (decimalType.isShort()) {
+            return BigDecimal.valueOf(decimalType.getLong(block, position), decimalType.getScale());
+        }
+        Int128 unscaled = (Int128) decimalType.getObject(block, position);
+        return new BigDecimal(unscaled.toBigInteger(), decimalType.getScale());
+    }
+
     public static Object convert(Block block, int position, Type type, Schema<?> schemaType,
             ObjectMapper objectMapper) {
         if (block.isNull(position)) {
@@ -344,6 +359,9 @@ public class JsonTrinoConverter {
         }
         if (type instanceof DoubleType || type instanceof RealType) {
             return type.getDouble(block, position);
+        }
+        if (type instanceof DecimalType decimalType) {
+            return decimalValue(block, position, decimalType);
         }
         if (type instanceof VarcharType) {
             return type.getSlice(block, position).toStringUtf8();
@@ -394,6 +412,8 @@ public class JsonTrinoConverter {
                 arrayNode.add(longValue);
             } else if (itemValue instanceof Double doubleValue) {
                 arrayNode.add(doubleValue);
+            } else if (itemValue instanceof BigDecimal bigDecimalValue) {
+                arrayNode.add(bigDecimalValue);
             } else if (itemValue instanceof String stringValue) {
                 arrayNode.add(stringValue);
             } else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
@@ -425,6 +445,8 @@ public class JsonTrinoConverter {
                 mapNode.put(key, longValue);
             } else if (itemValue instanceof Double doubleValue) {
                 mapNode.put(key, doubleValue);
+            } else if (itemValue instanceof BigDecimal bigDecimalValue) {
+                mapNode.put(key, bigDecimalValue);
             } else if (itemValue instanceof String stringValue) {
                 mapNode.put(key, stringValue);
             } else if (itemValue instanceof ArrayNode || itemValue instanceof ObjectNode) {
@@ -451,6 +473,8 @@ public class JsonTrinoConverter {
                 rowNode.put(key, longValue);
             } else if (value instanceof Double doubleValue) {
                 rowNode.put(key, doubleValue);
+            } else if (value instanceof BigDecimal bigDecimalValue) {
+                rowNode.put(key, bigDecimalValue);
             } else if (value instanceof String stringValue) {
                 rowNode.put(key, stringValue);
             } else if (value instanceof ArrayNode || value instanceof ObjectNode) {
