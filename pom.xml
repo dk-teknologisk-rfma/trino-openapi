@@ -10,7 +10,7 @@
 
     <groupId>pl.net.was</groupId>
     <artifactId>trino-openapi</artifactId>
-    <version>1.90-483</version>
+    <version>1.91-484</version>
     <packaging>trino-plugin</packaging>
 
     <name>${project.artifactId}</name>
@@ -53,7 +53,7 @@
         <air.build.jvmsize>4g</air.build.jvmsize>
         <air.test.jvm.additional-arguments>--add-modules=jdk.incubator.vector</air.test.jvm.additional-arguments>
 
-        <dep.trino.version>483</dep.trino.version>
+        <dep.trino.version>484</dep.trino.version>
         <dep.airlift.version>439</dep.airlift.version>
         <dep.jackson-annotations.version>2.22.1</dep.jackson-annotations.version>
         <dep.logback.version>1.5.38</dep.logback.version>
