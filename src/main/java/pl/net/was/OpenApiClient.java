@@ -1076,21 +1076,26 @@ public class OpenApiClient
         return Map.entry(httpPath, pathParams);
     }
 
-    private static URI buildUri(URI baseUri, String path, List<String> queryParams)
+    static URI buildUri(URI baseUri, String path, List<String> queryParams)
             throws URISyntaxException
     {
         // both the path and query parameters are already percent-encoded, according to their parameter styles,
         // and HttpUriBuilder would decode and encode them again, for example turning encoded slashes into path separators.
         // Joining the paths as text, instead of resolving a reference, makes sure the result can't change the host
+        // a path can carry a fixed query, like /search?datasetKey=1, so merge it with the other query parameters
+        int queryStart = path.indexOf('?');
         StringBuilder uri = new StringBuilder()
                 .append(baseUri.getScheme())
                 .append("://")
                 .append(baseUri.getRawAuthority())
                 .append(CharMatcher.is('/').trimTrailingFrom(nullToEmpty(baseUri.getRawPath())))
-                .append(path);
+                .append(queryStart < 0 ? path : path.substring(0, queryStart));
         List<String> query = new ArrayList<>();
         if (baseUri.getRawQuery() != null) {
             query.add(baseUri.getRawQuery());
+        }
+        if (queryStart >= 0 && queryStart < path.length() - 1) {
+            query.add(path.substring(queryStart + 1));
         }
         query.addAll(queryParams);
         if (!query.isEmpty()) {
